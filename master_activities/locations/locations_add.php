@@ -4,13 +4,12 @@ include("../../includes/auth.php");
 include("../../config/db.php");
 
 if(isset($_POST['save'])) {
-    $name = mysqli_real_escape_string($conn, $_POST['location_name']);
-    $building = mysqli_real_escape_string($conn, $_POST['building']);
+    $dept_name = mysqli_real_escape_string($conn, $_POST['dept_name']);
     $floor = mysqli_real_escape_string($conn, $_POST['floor']);
     $remarks = mysqli_real_escape_string($conn, $_POST['remarks']);
 
-    $query = "INSERT INTO locations (location_name, building, floor, remarks) 
-              VALUES ('$name', '$building', '$floor', '$remarks')";
+    $query = "INSERT INTO locations (dept_name, floor, remarks) 
+              VALUES ('$dept_name', '$floor', '$remarks')";
     
     if(mysqli_query($conn, $query)) {
         header("Location: locations_list.php");
@@ -37,12 +36,8 @@ include("../../includes/sidebar.php");
             <form method="post">
                 <div class="row">
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Location Name</label>
-                        <input type="text" name="location_name" class="form-control" placeholder="e.g. Server Room" required>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Building</label>
-                        <input type="text" name="building" class="form-control" placeholder="e.g. Block A">
+                        <label class="form-label">dept_name</label>
+                        <input type="text" name="dept_name" class="form-control" placeholder="e.g. ICT">
                     </div>
                 </div>
 
