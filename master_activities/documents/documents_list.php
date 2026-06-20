@@ -65,7 +65,7 @@ $result = mysqli_query($conn, $query);
                         <option value="SALE_ORDER" <?= ($type == 'SALE_ORDER') ? 'selected' : '' ?>>Sale Order</option>
                         <option value="INVOICE" <?= ($type == 'INVOICE') ? 'selected' : '' ?>>Invoice</option>
                         <option value="WARRANTY" <?= ($type == 'WARRANTY') ? 'selected' : '' ?>>Warranty Card</option>
-                        <option value="MAINTENANCE" <?= ($type == 'MAINTENANCE') ? 'selected' : '' ?>>Maintenance Report</option>
+                        
                         <option value="INSURANCE" <?= ($type == 'INSURANCE') ? 'selected' : '' ?>>Insurance Policy</option>
                         <option value="OTHER" <?= ($type == 'OTHER') ? 'selected' : '' ?>>General Document</option>
                     </select>

@@ -6,14 +6,24 @@ include("../../config/db.php");
 $id = mysqli_real_escape_string($conn, $_GET['id']);
 
 if(isset($_POST['update'])) {
+<<<<<<< HEAD
     $name = mysqli_real_escape_string($conn, $_POST['location_name']);
     $dept_name = mysqli_real_escape_string($conn, $_POST['dept_name']);
+=======
+    $name = mysqli_real_escape_string($conn, $_POST['dept_name']);
+    $building = mysqli_real_escape_string($conn, $_POST['building']);
+>>>>>>> upstream/master
     $floor = mysqli_real_escape_string($conn, $_POST['floor']);
     $remarks = mysqli_real_escape_string($conn, $_POST['remarks']);
 
     $query = "UPDATE locations SET 
+<<<<<<< HEAD
               location_name='$name', 
               dept_name='$dept_name', 
+=======
+              dept_name='$name', 
+              building='$building', 
+>>>>>>> upstream/master
               floor='$floor', 
               remarks='$remarks' 
               WHERE location_id=$id";
@@ -47,7 +57,7 @@ include("../../includes/sidebar.php");
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Location Name</label>
-                        <input type="text" name="location_name" value="<?= htmlspecialchars($row['location_name']) ?>" class="form-control" required>
+                        <input type="text" name="dept_name" value="<?= htmlspecialchars($row['dept_name']) ?>" class="form-control" required>
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label">dept_name</label>

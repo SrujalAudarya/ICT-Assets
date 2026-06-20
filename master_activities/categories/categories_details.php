@@ -41,7 +41,7 @@ if($location != ""){
 
 /* ---------- ASSETS IN THIS CATEGORY ---------- */
 $assets_query = "
-SELECT a.*, s.status_name, l.location_name, m.model_name
+SELECT a.*, s.status_name, l.dept_name, m.model_name
 FROM assets a
 LEFT JOIN asset_status s ON a.status_id = s.status_id
 LEFT JOIN locations l ON a.location_id = l.location_id
@@ -149,15 +149,15 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                                 <option value="">All Locations</option>
                                 <?php
                                 // Only show locations that have assets in this category
-                                $locs_query = "SELECT DISTINCT l.location_id, l.location_name 
+                                $locs_query = "SELECT DISTINCT l.location_id, l.dept_name 
                                                FROM locations l
                                                JOIN assets a ON l.location_id = a.location_id
                                                WHERE a.category_id = '$id'
-                                               ORDER BY l.location_name ASC";
+                                               ORDER BY l.dept_name ASC";
                                 $locs = mysqli_query($conn, $locs_query);
                                 while($l = mysqli_fetch_assoc($locs)){
                                     $selected = ($location == $l['location_id']) ? "selected" : "";
-                                    echo "<option value='{$l['location_id']}' $selected>{$l['location_name']}</option>";
+                                    echo "<option value='{$l['location_id']}' $selected>{$l['dept_name']}</option>";
                                 }
                                 ?>
                             </select>
@@ -199,7 +199,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                                             <td>
                                                 <span class="badge bg-info"><?= $asset['status_name'] ?></span>
                                             </td>
-                                            <td><?= htmlspecialchars($asset['location_name']) ?></td>
+                                            <td><?= htmlspecialchars($asset['dept_name']) ?></td>
                                             <td class="text-center">
                                                 <a href="../assets/asset_details.php?id=<?= $asset['asset_id'] ?>" class="btn btn-sm btn-outline-primary">View</a>
                                             </td>

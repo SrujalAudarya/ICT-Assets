@@ -167,10 +167,10 @@ while($d = mysqli_fetch_assoc($docs_res)) {
                         <select name="location_id" class="form-select">
                             <option value="">Select Location</option>
                             <?php
-                            $res = mysqli_query($conn,"SELECT * FROM locations ORDER BY location_name ASC");
+                            $res = mysqli_query($conn,"SELECT * FROM locations ORDER BY dept_name ASC");
                             while($row = mysqli_fetch_assoc($res)) {
                                 $selected = ($row['location_id'] == $data['location_id']) ? "selected" : "";
-                                echo "<option value='{$row['location_id']}' $selected>{$row['location_name']}</option>";
+                                echo "<option value='{$row['location_id']}' $selected>{$row['dept_name']}</option>";
                             }
                             ?>
                         </select>
