@@ -62,7 +62,7 @@ $result = mysqli_query($conn, $query);
                         <tr>
                             <th>ID</th>
                             <th>Location Name</th>
-                            <th>Building</th>
+                            <th>dept_name</th>
                             <th>Floor</th>
                             <th class="text-center">Assets</th>
                             <th class="text-center">Actions</th>
@@ -78,7 +78,7 @@ $result = mysqli_query($conn, $query);
                                             <?= htmlspecialchars($row['location_name']) ?>
                                         </a>
                                     </td>
-                                    <td><?= htmlspecialchars($row['building']) ?></td>
+                                    <td><?= htmlspecialchars($row['dept_name']) ?></td>
                                     <td><?= htmlspecialchars($row['floor']) ?></td>
                                     <td class="text-center">
                                         <span class="badge bg-info rounded-pill"><?= $row['asset_count'] ?></span>
