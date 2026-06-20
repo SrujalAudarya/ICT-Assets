@@ -7,7 +7,7 @@ $id = mysqli_real_escape_string($conn, $_GET['id']);
 
 /* ---------- ASSET BASIC INFO ---------- */
 $asset_query = "
-SELECT a.*, c.category_name, s.status_name, l.location_name, v.vendor_name, m.model_name
+SELECT a.*, c.category_name, s.status_name, l.dept_name, v.vendor_name, m.model_name
 FROM assets a
 LEFT JOIN asset_categories c ON a.category_id=c.category_id
 LEFT JOIN asset_status s ON a.status_id=s.status_id
@@ -99,7 +99,7 @@ if(isset($_GET['export'])) {
         echo '<tr><td>Category:</td><td colspan="4">' . htmlspecialchars($asset['category_name']) . '</td></tr>';
         echo '<tr><td>Model:</td><td colspan="4">' . htmlspecialchars($asset['model_name'] ?? 'N/A') . '</td></tr>';
         echo '<tr><td>Current Status:</td><td colspan="4">' . htmlspecialchars($asset['status_name']) . '</td></tr>';
-        echo '<tr><td>Location:</td><td colspan="4">' . htmlspecialchars($asset['location_name']) . '</td></tr>';
+        echo '<tr><td>Location:</td><td colspan="4">' . htmlspecialchars($asset['dept_name']) . '</td></tr>';
         
         echo '<tr></tr>';
         echo '<tr><th colspan="5" class="section-head">Lifecycle & Cost</th></tr>';
@@ -191,7 +191,7 @@ include("../../includes/sidebar.php");
                         <tr><th>Status</th><td>
                             <span class="badge bg-info"><?= $asset['status_name'] ?></span>
                         </td></tr>
-                        <tr><th>Location</th><td><?= $asset['location_name'] ?></td></tr>
+                        <tr><th>Location</th><td><?= $asset['dept_name'] ?></td></tr>
                         <tr><th>Vendor</th><td><?= $asset['vendor_name'] ?: 'N/A' ?></td></tr>
                     </table>
                 </div>
@@ -368,7 +368,7 @@ function exportToPDF() {
             ["Category", "<?= addslashes($asset['category_name']) ?>"],
             ["Model", "<?= addslashes($asset['model_name'] ?? 'N/A') ?>"],
             ["Current Status", "<?= addslashes($asset['status_name']) ?>"],
-            ["Location", "<?= addslashes($asset['location_name']) ?>"]
+            ["Location", "<?= addslashes($asset['dept_name']) ?>"]
         ],
         theme: 'grid',
         styles: { fontSize: 10 }

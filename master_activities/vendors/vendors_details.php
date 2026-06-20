@@ -47,7 +47,7 @@ if($location != ""){
 
 /* ---------- ASSETS FROM THIS VENDOR ---------- */
 $assets_query = "
-SELECT a.*, c.category_name, s.status_name, l.location_name, m.model_name
+SELECT a.*, c.category_name, s.status_name, l.dept_name, m.model_name
 FROM assets a
 LEFT JOIN asset_categories c ON a.category_id = c.category_id
 LEFT JOIN asset_status s ON a.status_id = s.status_id

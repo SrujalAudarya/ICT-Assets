@@ -59,7 +59,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
 
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Location Profile: <?= htmlspecialchars($location['location_name']) ?></h2>
+        <h2>Location Profile: <?= htmlspecialchars($location['dept_name']) ?></h2>
         <div>
             <a href="locations_edit.php?id=<?= $id ?>" class="btn btn-warning">Edit Location</a>
             <a href="locations_list.php" class="btn btn-secondary">Back to List</a>
@@ -180,7 +180,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
 
             <div class="card shadow-sm">
                 <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Assets Currently at <?= htmlspecialchars($location['location_name']) ?></h5>
+                    <h5 class="mb-0">Assets Currently at <?= htmlspecialchars($location['dept_name']) ?></h5>
                     <span class="badge bg-dark"><?= $filtered_count ?> Results</span>
                 </div>
                 <div class="card-body p-0">

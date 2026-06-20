@@ -10,7 +10,7 @@ $search = trim($_GET['search'] ?? '');
 $where = "WHERE 1=1";
 if($search != ""){
     $search_escaped = mysqli_real_escape_string($conn, $search);
-    $where .= " AND (location_name LIKE '%$search_escaped%' 
+    $where .= " AND (dept_name LIKE '%$search_escaped%' 
                  OR building LIKE '%$search_escaped%'
                  OR floor LIKE '%$search_escaped%')";
 }
@@ -75,7 +75,7 @@ $result = mysqli_query($conn, $query);
                                     <td><?= $row['location_id'] ?></td>
                                     <td class="fw-bold">
                                         <a href="locations_details.php?id=<?= $row['location_id'] ?>" class="text-decoration-none">
-                                            <?= htmlspecialchars($row['location_name']) ?>
+                                            <?= htmlspecialchars($row['dept_name']) ?>
                                         </a>
                                     </td>
                                     <td><?= htmlspecialchars($row['building']) ?></td>
