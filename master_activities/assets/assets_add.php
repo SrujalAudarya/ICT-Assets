@@ -141,9 +141,9 @@ include("../../includes/sidebar.php");
                         <select name="location_id" class="form-select">
                             <option value="">Select Location</option>
                             <?php
-                            $res = mysqli_query($conn,"SELECT * FROM locations ORDER BY location_name ASC");
+                            $res = mysqli_query($conn,"SELECT * FROM locations ORDER BY dept_name ASC");
                             while($row = mysqli_fetch_assoc($res)) {
-                                echo "<option value='{$row['location_id']}'>{$row['location_name']}</option>";
+                                echo "<option value='{$row['location_id']}'>{$row['dept_name']}</option>";
                             }
                             ?>
                         </select>

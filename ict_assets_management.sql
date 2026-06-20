@@ -35,7 +35,7 @@ CREATE TABLE vendors (
 -- Locations
 CREATE TABLE locations (
                            location_id INT AUTO_INCREMENT PRIMARY KEY,
-                           location_name VARCHAR(150) NOT NULL,
+                           dept_name VARCHAR(150) NOT NULL,
                            building VARCHAR(100),
                            floor VARCHAR(50),
                            remarks TEXT,

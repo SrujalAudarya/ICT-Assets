@@ -26,9 +26,7 @@ function isActive($pages) {
             <i class="bi bi-person-check"></i> Assignments
         </a>
         
-        <a href="<?= ROUTE_MAINTENANCE ?>" class="nav-link <?= isActive(['maintenance_list.php', 'maintenance_add.php', 'maintenance_details.php']) ?>">
-            <i class="bi bi-tools"></i> Maintenance
-        </a>
+        
         
         <a href="<?= ROUTE_DOCUMENTS ?>" class="nav-link <?= isActive(['documents_list.php', 'documents_upload.php', 'document_details.php']) ?>">
             <i class="bi bi-file-earmark-text"></i> Documents

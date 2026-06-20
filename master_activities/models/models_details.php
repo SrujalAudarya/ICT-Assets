@@ -38,7 +38,7 @@ if($location != ""){
 
 /* ---------- ASSETS USING THIS MODEL ---------- */
 $assets_query = "
-SELECT a.*, s.status_name, l.location_name
+SELECT a.*, s.status_name, l.dept_name
 FROM assets a
 LEFT JOIN asset_status s ON a.status_id = s.status_id
 LEFT JOIN locations l ON a.location_id = l.location_id
@@ -64,10 +64,10 @@ if(isset($_GET['export'])) {
         $st_res = mysqli_query($conn, "SELECT status_name FROM asset_status WHERE status_id='$status'");
         $status_name = mysqli_fetch_assoc($st_res)['status_name'];
     }
-    $location_name = "All";
+    $dept_name = "All";
     if($location) {
-        $loc_res = mysqli_query($conn, "SELECT location_name FROM locations WHERE location_id='$location'");
-        $location_name = mysqli_fetch_assoc($loc_res)['location_name'];
+        $loc_res = mysqli_query($conn, "SELECT dept_name FROM locations WHERE location_id='$location'");
+        $dept_name = mysqli_fetch_assoc($loc_res)['dept_name'];
     }
 
     if($format == 'csv') {
@@ -80,12 +80,12 @@ if(isset($_GET['export'])) {
         fputcsv($output, ['Category:', $model['category_name']]);
         fputcsv($output, ['Vendor:', $model['vendor_name']]);
         if($status) fputcsv($output, ['Filter - Status:', $status_name]);
-        if($location) fputcsv($output, ['Filter - Location:', $location_name]);
+        if($location) fputcsv($output, ['Filter - Location:', $dept_name]);
         fputcsv($output, []); // Empty row
         
         fputcsv($output, ['Asset ID', 'Asset Name', 'Serial Number', 'Status', 'Location', 'Cost', 'Purchase Date']);
         while($row = mysqli_fetch_assoc($assets_result)) {
-            fputcsv($output, [$row['asset_id'], $row['asset_name'], $row['serial_number'], $row['status_name'], $row['location_name'], $row['cost'], $row['purchase_date']]);
+            fputcsv($output, [$row['asset_id'], $row['asset_name'], $row['serial_number'], $row['status_name'], $row['dept_name'], $row['cost'], $row['purchase_date']]);
         }
         fclose($output);
         exit();
@@ -122,7 +122,7 @@ if(isset($_GET['export'])) {
             echo '<tr></tr>';
             echo '<tr><th colspan="7" style="background-color:#fff3cd; text-align:left;">Active Filters Applied:</th></tr>';
             if($status) echo '<tr><td colspan="2" style="font-weight:bold;">Status:</td><td colspan="5">' . $status_name . '</td></tr>';
-            if($location) echo '<tr><td colspan="2" style="font-weight:bold;">Location:</td><td colspan="5">' . $location_name . '</td></tr>';
+            if($location) echo '<tr><td colspan="2" style="font-weight:bold;">Location:</td><td colspan="5">' . $dept_name . '</td></tr>';
         }
         
         echo '<tr></tr>';
@@ -136,7 +136,7 @@ if(isset($_GET['export'])) {
             echo '<td>' . htmlspecialchars($row['asset_name']) . '</td>';
             echo '<td>' . htmlspecialchars($row['serial_number']) . '</td>';
             echo '<td>' . htmlspecialchars($row['status_name']) . '</td>';
-            echo '<td>' . htmlspecialchars($row['location_name']) . '</td>';
+            echo '<td>' . htmlspecialchars($row['dept_name']) . '</td>';
             echo '<td>' . number_format($row['cost'], 2) . '</td>';
             echo '<td>' . $row['purchase_date'] . '</td>';
             echo '</tr>';
@@ -166,13 +166,13 @@ if(isset($_GET['export'])) {
             echo "<div class='filter-info'>";
             echo "<strong>Applied Filters:</strong> ";
             if($status) echo "Status: <span class='badge'>$status_name</span> ";
-            if($location) echo " | Location: <span class='badge'>$location_name</span>";
+            if($location) echo " | Location: <span class='badge'>$dept_name</span>";
             echo "</div>";
         }
 
         echo "<table><thead><tr><th>ID</th><th>Asset Name</th><th>Serial No</th><th>Status</th><th>Location</th><th>Cost</th></tr></thead><tbody>";
         while($row = mysqli_fetch_assoc($assets_result)) {
-            echo "<tr><td>{$row['asset_id']}</td><td>{$row['asset_name']}</td><td>{$row['serial_number']}</td><td>{$row['status_name']}</td><td>{$row['location_name']}</td><td>{$row['cost']}</td></tr>";
+            echo "<tr><td>{$row['asset_id']}</td><td>{$row['asset_name']}</td><td>{$row['serial_number']}</td><td>{$row['status_name']}</td><td>{$row['dept_name']}</td><td>{$row['cost']}</td></tr>";
         }
         echo "</tbody></table><script>window.print();</script></body></html>";
         exit();
@@ -273,15 +273,15 @@ include("../../includes/sidebar.php");
                                 <option value="">All Locations</option>
                                 <?php
                                 // Only show locations that have assets of this model
-                                $locs_query = "SELECT DISTINCT l.location_id, l.location_name 
+                                $locs_query = "SELECT DISTINCT l.location_id, l.dept_name 
                                                FROM locations l
                                                JOIN assets a ON l.location_id = a.location_id
                                                WHERE a.model_id = '$id'
-                                               ORDER BY l.location_name ASC";
+                                               ORDER BY l.dept_name ASC";
                                 $locs = mysqli_query($conn, $locs_query);
                                 while($l = mysqli_fetch_assoc($locs)){
                                     $selected = ($location == $l['location_id']) ? "selected" : "";
-                                    echo "<option value='{$l['location_id']}' $selected>{$l['location_name']}</option>";
+                                    echo "<option value='{$l['location_id']}' $selected>{$l['dept_name']}</option>";
                                 }
                                 ?>
                             </select>
@@ -321,7 +321,7 @@ include("../../includes/sidebar.php");
                                             <td>
                                                 <span class="badge bg-info"><?= $asset['status_name'] ?></span>
                                             </td>
-                                            <td><?= htmlspecialchars($asset['location_name']) ?></td>
+                                            <td><?= htmlspecialchars($asset['dept_name']) ?></td>
                                             <td class="text-center">
                                                 <a href="../assets/asset_details.php?id=<?= $asset['asset_id'] ?>" class="btn btn-sm btn-outline-primary">View Asset</a>
                                             </td>

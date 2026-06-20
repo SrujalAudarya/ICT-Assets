@@ -51,7 +51,7 @@ $query = "
 SELECT a.*, 
        c.category_name,
        s.status_name,
-       l.location_name,
+       l.dept_name,
        m.model_name
 FROM assets a
 LEFT JOIN asset_categories c ON a.category_id=c.category_id
@@ -146,10 +146,10 @@ $result = mysqli_query($conn, $query);
                     <select name="location" class="form-select">
                         <option value="">All Locations</option>
                         <?php
-                        $loc = mysqli_query($conn,"SELECT * FROM locations ORDER BY location_name ASC");
+                        $loc = mysqli_query($conn,"SELECT * FROM locations ORDER BY dept_name ASC");
                         while($l = mysqli_fetch_assoc($loc)){
                             $selected = ($location == $l['location_id']) ? "selected" : "";
-                            echo "<option value='{$l['location_id']}' $selected>{$l['location_name']}</option>";
+                            echo "<option value='{$l['location_id']}' $selected>{$l['dept_name']}</option>";
                         }
                         ?>
                     </select>
@@ -205,7 +205,7 @@ $result = mysqli_query($conn, $query);
                                         ?>
                                         <span class="badge <?= $badge_class ?>"><?= $row['status_name'] ?></span>
                                     </td>
-                                    <td><?= $row['location_name'] ?></td>
+                                    <td><?= $row['dept_name'] ?></td>
                                     <td>₹ <?= number_format($row['cost'], 2) ?></td>
                                     <td class="text-center">
                                         <div class="btn-group btn-group-sm">

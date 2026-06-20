@@ -7,7 +7,7 @@ $id = mysqli_real_escape_string($conn, $_GET['id']);
 
 /* ---------- ASSET BASIC INFO ---------- */
 $asset_query = "
-SELECT a.*, c.category_name, s.status_name, l.location_name, v.vendor_name, m.model_name
+SELECT a.*, c.category_name, s.status_name, l.dept_name, v.vendor_name, m.model_name
 FROM assets a
 LEFT JOIN asset_categories c ON a.category_id=c.category_id
 LEFT JOIN asset_status s ON a.status_id=s.status_id
@@ -45,16 +45,7 @@ ORDER BY aa.assignment_id DESC
 $assignments = [];
 while($row = mysqli_fetch_assoc($assignments_res)) $assignments[] = $row;
 
-/* ---------- MAINTENANCE HISTORY ---------- */
-$maintenance_res = mysqli_query($conn,"
-SELECT m.*, v.vendor_name
-FROM maintenance_records m
-LEFT JOIN vendors v ON m.vendor_id=v.vendor_id
-WHERE m.asset_id='$id'
-ORDER BY m.maintenance_id DESC
-");
-$maintenance = [];
-while($row = mysqli_fetch_assoc($maintenance_res)) $maintenance[] = $row;
+
 
 /* ---------- DOCUMENTS BY TYPE ---------- */
 $docs_res = mysqli_query($conn,"SELECT * FROM documents WHERE asset_id='$id' ORDER BY document_id DESC");
@@ -99,7 +90,7 @@ if(isset($_GET['export'])) {
         echo '<tr><td>Category:</td><td colspan="4">' . htmlspecialchars($asset['category_name']) . '</td></tr>';
         echo '<tr><td>Model:</td><td colspan="4">' . htmlspecialchars($asset['model_name'] ?? 'N/A') . '</td></tr>';
         echo '<tr><td>Current Status:</td><td colspan="4">' . htmlspecialchars($asset['status_name']) . '</td></tr>';
-        echo '<tr><td>Location:</td><td colspan="4">' . htmlspecialchars($asset['location_name']) . '</td></tr>';
+        echo '<tr><td>Location:</td><td colspan="4">' . htmlspecialchars($asset['dept_name']) . '</td></tr>';
         
         echo '<tr></tr>';
         echo '<tr><th colspan="5" class="section-head">Lifecycle & Cost</th></tr>';
@@ -116,13 +107,7 @@ if(isset($_GET['export'])) {
             echo '<tr><td>' . htmlspecialchars($row['name']) . '</td><td>' . $row['assigned_date'] . '</td><td>' . ($row['returned_date'] ?: 'Active') . '</td><td colspan="2">' . htmlspecialchars($row['remarks']) . '</td></tr>';
         }
 
-        // Maintenance History
-        echo '<tr></tr>';
-        echo '<tr><th colspan="5" class="section-head">Maintenance Records</th></tr>';
-        echo '<tr><th>Date</th><th>Issue Description</th><th>Vendor</th><th>Cost</th><th>Remarks</th></tr>';
-        foreach($maintenance as $row) {
-            echo '<tr><td>' . $row['maintenance_date'] . '</td><td>' . htmlspecialchars($row['issue_description']) . '</td><td>' . htmlspecialchars($row['vendor_name']) . '</td><td>' . number_format($row['cost'], 2) . '</td><td>' . htmlspecialchars($row['remarks']) . '</td></tr>';
-        }
+        
 
         echo '</table></body></html>';
         exit();
@@ -143,11 +128,8 @@ if(isset($_GET['export'])) {
             fputcsv($output, [$row['name'], $row['assigned_date'], $row['returned_date'] ?: 'Active', $row['remarks']]);
         }
         fputcsv($output, []);
-        fputcsv($output, ['MAINTENANCE HISTORY']);
+        
         fputcsv($output, ['Date', 'Issue', 'Vendor', 'Cost']);
-        foreach($maintenance as $row) {
-            fputcsv($output, [$row['maintenance_date'], $row['issue_description'], $row['vendor_name'], $row['cost']]);
-        }
         fclose($output);
         exit();
     }
@@ -191,7 +173,7 @@ include("../../includes/sidebar.php");
                         <tr><th>Status</th><td>
                             <span class="badge bg-info"><?= $asset['status_name'] ?></span>
                         </td></tr>
-                        <tr><th>Location</th><td><?= $asset['location_name'] ?></td></tr>
+                        <tr><th>Location</th><td><?= $asset['dept_name'] ?></td></tr>
                         <tr><th>Vendor</th><td><?= $asset['vendor_name'] ?: 'N/A' ?></td></tr>
                     </table>
                 </div>
@@ -247,9 +229,7 @@ include("../../includes/sidebar.php");
                         <li class="nav-item">
                             <button class="nav-link active" id="assign-tab" data-bs-toggle="tab" data-bs-target="#assign" type="button">Assignment History</button>
                         </li>
-                        <li class="nav-item">
-                            <button class="nav-link" id="maint-tab" data-bs-toggle="tab" data-bs-target="#maint" type="button">Maintenance Records</button>
-                        </li>
+                        
                         <li class="nav-item">
                             <button class="nav-link" id="docs-tab" data-bs-toggle="tab" data-bs-target="#docs" type="button">Other Documents</button>
                         </li>
@@ -287,33 +267,7 @@ include("../../includes/sidebar.php");
                             </table>
                         </div>
 
-                        <!-- MAINTENANCE TAB -->
-                        <div class="tab-pane fade" id="maint" role="tabpanel">
-                            <table class="table table-hover" id="maintTable">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Date</th>
-                                        <th>Issue Description</th>
-                                        <th>Vendor</th>
-                                        <th>Cost</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if(count($maintenance) > 0): ?>
-                                        <?php foreach($maintenance as $row): ?>
-                                            <tr>
-                                                <td><?= date('d M Y', strtotime($row['maintenance_date'])) ?></td>
-                                                <td><?= htmlspecialchars($row['issue_description']) ?></td>
-                                                <td><?= htmlspecialchars($row['vendor_name']) ?></td>
-                                                <td>₹ <?= number_format($row['cost'], 2) ?></td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    <?php else: ?>
-                                        <tr><td colspan="4" class="text-center text-muted">No maintenance records found.</td></tr>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
-                        </div>
+                        
 
                         <!-- OTHER DOCUMENTS TAB -->
                         <div class="tab-pane fade" id="docs" role="tabpanel">
@@ -368,7 +322,7 @@ function exportToPDF() {
             ["Category", "<?= addslashes($asset['category_name']) ?>"],
             ["Model", "<?= addslashes($asset['model_name'] ?? 'N/A') ?>"],
             ["Current Status", "<?= addslashes($asset['status_name']) ?>"],
-            ["Location", "<?= addslashes($asset['location_name']) ?>"]
+            ["Location", "<?= addslashes($asset['dept_name']) ?>"]
         ],
         theme: 'grid',
         styles: { fontSize: 10 }
@@ -397,14 +351,7 @@ function exportToPDF() {
         headStyles: { fillColor: [100, 100, 100] }
     });
     
-    // Maintenance Records
-    doc.text("Maintenance Records", 14, doc.lastAutoTable.finalY + 15);
-    doc.autoTable({
-        html: '#maintTable',
-        startY: doc.lastAutoTable.finalY + 20,
-        theme: 'striped',
-        headStyles: { fillColor: [100, 100, 100] }
-    });
+    
     
     doc.save("Asset_Profile_" + assetName.replace(/\s+/g, '_') + ".pdf");
 }

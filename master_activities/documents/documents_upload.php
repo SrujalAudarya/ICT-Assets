@@ -110,7 +110,7 @@ if(isset($_POST['upload_ajax'])) {
                             <option value="SALE_ORDER">Sale Order</option>
                             <option value="INVOICE">Invoice</option>
                             <option value="WARRANTY">Warranty Card</option>
-                            <option value="MAINTENANCE">Maintenance Report</option>
+                            
                             <option value="INSURANCE">Insurance Policy</option>
                         </select>
                     </div>
