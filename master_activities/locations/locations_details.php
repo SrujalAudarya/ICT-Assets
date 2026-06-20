@@ -71,12 +71,12 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
         <div class="col-md-4">
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">Location Details</h5>
+                    <h5 class="mb-0">Department Details</h5>
                 </div>
                 <div class="card-body">
                     <table class="table table-sm">
                         <tr><th width="40%">ID</th><td><?= $location['location_id'] ?></td></tr>
-                        <tr><th>dept_name</th><td><?= htmlspecialchars($location['dept_name'] ?: 'N/A') ?></td></tr>
+                        <tr><th>Department</th><td><?= htmlspecialchars($location['dept_name'] ?: 'N/A') ?></td></tr>
                         <tr><th>Floor</th><td><?= htmlspecialchars($location['floor'] ?: 'N/A') ?></td></tr>
                         <tr><th>Created At</th><td><?= date('d M Y', strtotime($location['created_at'])) ?></td></tr>
                     </table>

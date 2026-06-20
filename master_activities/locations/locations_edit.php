@@ -46,11 +46,7 @@ include("../../includes/sidebar.php");
             <form method="post">
                 <div class="row">
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Location Name</label>
-                        <input type="text" name="dept_name" value="<?= htmlspecialchars($row['dept_name']) ?>" class="form-control" required>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">dept_name</label>
+                        <label class="form-label">Department</label>
                         <input type="text" name="dept_name" value="<?= htmlspecialchars($row['dept_name']) ?>" class="form-control">
                     </div>
                 </div>
