@@ -61,7 +61,6 @@ $result = mysqli_query($conn, $query);
                     <thead class="table-dark">
                         <tr>
                             <th>ID</th>
-                            <th>Location Name</th>
                             <th>dept_name</th>
                             <th>Floor</th>
                             <th class="text-center">Assets</th>
@@ -75,7 +74,7 @@ $result = mysqli_query($conn, $query);
                                     <td><?= $row['location_id'] ?></td>
                                     <td class="fw-bold">
                                         <a href="locations_details.php?id=<?= $row['location_id'] ?>" class="text-decoration-none">
-                                            <?= htmlspecialchars($row['dept_name']) ?>
+                                            <?= htmlspecialchars($row['location_id']) ?>
                                         </a>
                                     </td>
                                     <td><?= htmlspecialchars($row['dept_name']) ?></td>

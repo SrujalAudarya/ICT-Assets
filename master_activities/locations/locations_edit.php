@@ -6,24 +6,14 @@ include("../../config/db.php");
 $id = mysqli_real_escape_string($conn, $_GET['id']);
 
 if(isset($_POST['update'])) {
-<<<<<<< HEAD
     $name = mysqli_real_escape_string($conn, $_POST['location_name']);
     $dept_name = mysqli_real_escape_string($conn, $_POST['dept_name']);
-=======
-    $name = mysqli_real_escape_string($conn, $_POST['dept_name']);
-    $building = mysqli_real_escape_string($conn, $_POST['building']);
->>>>>>> upstream/master
     $floor = mysqli_real_escape_string($conn, $_POST['floor']);
     $remarks = mysqli_real_escape_string($conn, $_POST['remarks']);
 
     $query = "UPDATE locations SET 
-<<<<<<< HEAD
               location_name='$name', 
               dept_name='$dept_name', 
-=======
-              dept_name='$name', 
-              building='$building', 
->>>>>>> upstream/master
               floor='$floor', 
               remarks='$remarks' 
               WHERE location_id=$id";
