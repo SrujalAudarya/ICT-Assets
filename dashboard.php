@@ -105,7 +105,7 @@ $warranty_alerts = mysqli_query($conn, "SELECT asset_name, warranty_expiry, DATE
                 <a href="master_activities/assets/assets_add.php" class="btn btn-primary shadow-sm">
                     <i class="bi bi-plus-lg me-1"></i> Add Asset
                 </a>
-                <a href="master_activities/assignmet/assign_asset.php" class="btn btn-dark shadow-sm">
+                <a href="master_activities/assignments/assign_asset.php" class="btn btn-dark shadow-sm">
                     <i class="bi bi-person-plus me-1"></i> Assign
                 </a>
             </div>
@@ -259,7 +259,7 @@ $warranty_alerts = mysqli_query($conn, "SELECT asset_name, warranty_expiry, DATE
                     </div>
                 </div>
                 <div class="card-footer bg-transparent border-0 text-center">
-                    <a href="master_activities/assignmet/assignments_list.php" class="small text-primary fw-bold text-decoration-none">Manage All <i class="bi bi-arrow-right"></i></a>
+                    <a href="master_activities/assignments/assignments_list.php" class="small text-primary fw-bold text-decoration-none">Manage All <i class="bi bi-arrow-right"></i></a>
                 </div>
             </div>
         </div>
