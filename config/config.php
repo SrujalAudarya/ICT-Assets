@@ -40,8 +40,6 @@ const ROUTE_STATUS_ADD = MASTER_PATH . 'status/status_add.php';
 const ROUTE_STATUS_EDIT = MASTER_PATH . 'status/status_edit.php';
 const ROUTE_STATUS_DELETE = MASTER_PATH . 'status/status_delete.php';
 
-
-
 // Assets
 const ROUTE_ASSETS = MASTER_PATH . 'assets/assets_list.php';
 const ROUTE_ASSETS_ADD = MASTER_PATH . 'assets/assets_add.php';
@@ -49,12 +47,8 @@ const ROUTE_ASSETS_EDIT = MASTER_PATH . 'assets/assets_edit.php';
 const ROUTE_ASSETS_DELETE = MASTER_PATH . 'assets/assets_delete.php';
 
 // Assignments
-const ROUTE_ASSIGNMENTS = MASTER_PATH . 'assignmet/assignments_list.php';
-const ROUTE_ASSIGN_ASSET = MASTER_PATH . 'assignmet/assign_asset.php';
-
-// Maintenance
-const ROUTE_MAINTENANCE = MASTER_PATH . 'maintenance/maintenance_list.php';
-const ROUTE_MAINTENANCE_ADD = MASTER_PATH . 'maintenance/maintenance_add.php';
+const ROUTE_ASSIGNMENTS = MASTER_PATH . 'assignments/assignments_list.php';
+const ROUTE_ASSIGN_ASSET = MASTER_PATH . 'assignments/assign_asset.php';
 
 // Documents
 const ROUTE_DOCUMENTS = MASTER_PATH . 'documents/documents_list.php';

@@ -47,7 +47,12 @@ if($location != ""){
 
 /* ---------- ASSETS FROM THIS VENDOR ---------- */
 $assets_query = "
-SELECT a.*, c.category_name, s.status_name, l.dept_name, m.model_name
+SELECT a.*, 
+       c.category_name, 
+       s.status_name, 
+       l.dept_name, 
+       m.model_name,
+       m.specifications
 FROM assets a
 LEFT JOIN asset_categories c ON a.category_id = c.category_id
 LEFT JOIN asset_status s ON a.status_id = s.status_id
@@ -85,7 +90,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                         <tr><th width="40%">Contact Person</th><td><?= htmlspecialchars($vendor['contact_person'] ?: 'N/A') ?></td></tr>
                         <tr><th>Phone</th><td><?= htmlspecialchars($vendor['phone'] ?: 'N/A') ?></td></tr>
                         <tr><th>Email</th><td><?= htmlspecialchars($vendor['email'] ?: 'N/A') ?></td></tr>
-                        <tr><th>Created At</th><td><?= date('d M Y', strtotime($vendor['created_at'])) ?></td></tr>
+                        <tr><th>Created At</th><td><?= !empty($vendor['created_at']) ? date('d M Y', strtotime($vendor['created_at'])) : 'N/A' ?></td></tr>
                     </table>
                 </div>
             </div>
@@ -155,16 +160,16 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                             </select>
                         </div>
 
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="form-label small">Status</label>
                             <select name="status" class="form-select form-select-sm">
                                 <option value="">All Status</option>
                                 <?php
                                 $sts_query = "SELECT DISTINCT s.status_id, s.status_name 
-                                               FROM asset_status s
-                                               JOIN assets a ON s.status_id = a.status_id
-                                               WHERE a.vendor_id = '$id'
-                                               ORDER BY s.status_name ASC";
+                                              FROM asset_status s
+                                              JOIN assets a ON s.status_id = a.status_id
+                                              WHERE a.vendor_id = '$id'
+                                              ORDER BY s.status_name ASC";
                                 $sts = mysqli_query($conn, $sts_query);
                                 while($s = mysqli_fetch_assoc($sts)){
                                     $selected = ($status == $s['status_id']) ? "selected" : "";
@@ -174,7 +179,26 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                             </select>
                         </div>
 
-                        <div class="col-md-3 d-flex align-items-end">
+                        <div class="col-md-2">
+                            <label class="form-label small">Location</label>
+                            <select name="location" class="form-select form-select-sm">
+                                <option value="">All Locations</option>
+                                <?php
+                                $locs_query = "SELECT DISTINCT l.location_id, l.dept_name 
+                                               FROM locations l
+                                               JOIN assets a ON l.location_id = a.location_id
+                                               WHERE a.vendor_id = '$id'
+                                               ORDER BY l.dept_name ASC";
+                                $locs = mysqli_query($conn, $locs_query);
+                                while($l = mysqli_fetch_assoc($locs)){
+                                    $selected = ($location == $l['location_id']) ? "selected" : "";
+                                    echo "<option value='{$l['location_id']}' $selected>{$l['dept_name']}</option>";
+                                }
+                                ?>
+                            </select>
+                        </div>
+
+                        <div class="col-md-2 d-flex align-items-end">
                             <button type="submit" class="btn btn-primary btn-sm me-2 w-100">Filter</button>
                             <a href="vendors_details.php?id=<?= $id ?>" class="btn btn-outline-secondary btn-sm w-100">Reset</a>
                         </div>
@@ -196,7 +220,9 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                                     <th>Serial No</th>
                                     <th>Category</th>
                                     <th>Model</th>
+                                    <th>Configuration</th>
                                     <th>Status</th>
+                                    <th>Location</th>
                                     <th class="text-center">Action</th>
                                 </tr>
                             </thead>
@@ -208,9 +234,13 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                                             <td><code><?= htmlspecialchars($asset['serial_number']) ?></code></td>
                                             <td><?= htmlspecialchars($asset['category_name']) ?></td>
                                             <td><?= htmlspecialchars($asset['model_name'] ?? 'N/A') ?></td>
-                                            <td>
-                                                <span class="badge bg-info"><?= $asset['status_name'] ?></span>
+                                            <td style="max-width:250px; white-space:normal;">
+                                                <?= nl2br(htmlspecialchars($asset['specifications'] ?? 'N/A')) ?>
                                             </td>
+                                            <td>
+                                                <span class="badge bg-info"><?= htmlspecialchars($asset['status_name']) ?></span>
+                                            </td>
+                                            <td><?= htmlspecialchars($asset['dept_name'] ?? 'N/A') ?></td>
                                             <td class="text-center">
                                                 <a href="../assets/asset_details.php?id=<?= $asset['asset_id'] ?>" class="btn btn-sm btn-outline-primary">View</a>
                                             </td>
@@ -218,7 +248,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                                     <?php endwhile; ?>
                                 <?php else: ?>
                                     <tr>
-                                        <td colspan="6" class="text-center py-4 text-muted">No assets found matching your criteria.</td>
+                                        <td colspan="8" class="text-center py-4 text-muted">No assets found matching your criteria.</td>
                                     </tr>
                                 <?php endif; ?>
                             </tbody>
