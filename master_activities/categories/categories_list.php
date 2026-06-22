@@ -9,7 +9,7 @@ include("../../includes/sidebar.php");
 $query = "SELECT c.*, 
           (SELECT COUNT(*) FROM assets WHERE category_id = c.category_id) as asset_count
           FROM asset_categories c 
-          ORDER BY c.category_id DESC";
+          ORDER BY c.category_id ASc";
 $result = mysqli_query($conn, $query);
 ?>
 

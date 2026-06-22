@@ -33,7 +33,7 @@ $category_data = mysqli_query($conn, "
     FROM asset_categories c
     LEFT JOIN assets a ON a.category_id = c.category_id
     GROUP BY c.category_id
-    ORDER BY total DESC
+    ORDER BY total ASC
     LIMIT 6
 ");
 while ($row = mysqli_fetch_assoc($category_data)) {
@@ -69,7 +69,7 @@ $overdue_assignments = mysqli_query($conn, "
     JOIN users u ON aa.user_id = u.user_id
     WHERE aa.returned_date IS NULL
       AND DATEDIFF(CURDATE(), aa.assigned_date) >= $ASSIGN_OVERDUE_DAYS
-    ORDER BY days_assigned DESC
+    ORDER BY days_assigned ASC
     LIMIT 5
 ");
 $cnt_overdue_assign = mysqli_num_rows($overdue_assignments);
@@ -84,7 +84,7 @@ $recent_activity = mysqli_query($conn, "
     FROM asset_assignments aa
     JOIN assets a ON aa.asset_id = a.asset_id
     JOIN users u ON aa.user_id = u.user_id
-    ORDER BY aa.assignment_id DESC
+    ORDER BY aa.assignment_id ASC
     LIMIT 5
 ");
 

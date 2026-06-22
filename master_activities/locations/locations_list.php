@@ -16,7 +16,7 @@ if ($search != "") {
 }
 
 /* ---------- PAGINATION ---------- */
-$limit = 10;
+$limit = 12;
 $page = max(1, (int)($_GET['page'] ?? 1));
 $offset = ($page - 1) * $limit;
 
@@ -25,7 +25,7 @@ $query = "SELECT l.*,
           (SELECT COUNT(*) FROM assets WHERE location_id = l.location_id) as asset_count
           FROM locations l 
           $where 
-          ORDER BY l.location_id DESC 
+          ORDER BY l.location_id ASC 
           LIMIT $limit OFFSET $offset";
 $result = mysqli_query($conn, $query);
 ?>

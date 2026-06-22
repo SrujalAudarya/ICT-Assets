@@ -37,7 +37,7 @@ if (!empty($search)) {
 }
 
 $query .= " GROUP BY m.model_id
-            ORDER BY m.model_id DESC";
+            ORDER BY m.model_id ASC";
 
 $result = mysqli_query($conn, $query);
 ?>

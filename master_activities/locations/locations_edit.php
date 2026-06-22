@@ -6,13 +6,11 @@ include("../../config/db.php");
 $id = mysqli_real_escape_string($conn, $_GET['id']);
 
 if(isset($_POST['update'])) {
-    $name = mysqli_real_escape_string($conn, $_POST['location_name']);
     $dept_name = mysqli_real_escape_string($conn, $_POST['dept_name']);
     $floor = mysqli_real_escape_string($conn, $_POST['floor']);
     $remarks = mysqli_real_escape_string($conn, $_POST['remarks']);
 
     $query = "UPDATE locations SET 
-              location_name='$name', 
               dept_name='$dept_name', 
               floor='$floor', 
               remarks='$remarks' 

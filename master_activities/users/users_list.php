@@ -32,7 +32,7 @@ $query = "SELECT u.*,
           (SELECT COUNT(*) FROM asset_assignments WHERE user_id = u.user_id AND returned_date IS NULL) as active_assets
           FROM users u 
           $where 
-          ORDER BY u.user_id DESC 
+          ORDER BY u.user_id ASC 
           LIMIT $limit OFFSET $offset";
 $result = mysqli_query($conn, $query);
 ?>
