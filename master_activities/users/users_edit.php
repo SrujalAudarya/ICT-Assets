@@ -68,7 +68,7 @@ include("../../includes/sidebar.php");
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Email Address</label>
-                        <input type="email" name="email" value="<?= htmlspecialchars($data['email']) ?>" class="form-control" required>
+                        <input type="email" name="email" value="<?= htmlspecialchars($data['email']) ?>" class="form-control">
                     </div>
                 </div>
 
@@ -83,6 +83,7 @@ include("../../includes/sidebar.php");
                             <option value="Employee" <?= ($data['role'] == 'Employee') ? 'selected' : '' ?>>Employee (Asset Holder)</option>
                             <option value="Admin" <?= ($data['role'] == 'Admin') ? 'selected' : '' ?>>Admin (System Access)</option>
                             <option value="ICT Staff" <?= ($data['role'] == 'ICT Staff') ? 'selected' : '' ?>>ICT Staff</option>
+                            <option value="Server" <?= ($data['role'] == 'Server') ? 'selected' : '' ?>>Server</option>
                         </select>
                     </div>
                 </div>

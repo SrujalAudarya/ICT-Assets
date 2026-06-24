@@ -4,6 +4,17 @@ include("../../includes/auth.php");
 include("../../config/db.php");
 
 /* =========================================================
+   HELPER: CHECK COLUMN EXISTS
+   ========================================================= */
+function columnExists($conn, $table, $column) {
+    $table  = mysqli_real_escape_string($conn, $table);
+    $column = mysqli_real_escape_string($conn, $column);
+
+    $q = mysqli_query($conn, "SHOW COLUMNS FROM `$table` LIKE '$column'");
+    return ($q && mysqli_num_rows($q) > 0);
+}
+
+/* =========================================================
    HELPER: UPLOAD DOCUMENT + SAVE IN documents TABLE
    ========================================================= */
 function uploadDoc($conn, $asset_id, $file_input, $type) {
@@ -123,6 +134,17 @@ if (isset($_POST['save_asset'])) {
         }
     }
 
+    // Duplicate asset code check (only if column exists and asset code entered)
+    $has_asset_name_column = columnExists($conn, "assets", "asset_name");
+
+    if ($error == "" && $has_asset_name_column && $asset_name != "") {
+        $asset_name_safe = mysqli_real_escape_string($conn, $asset_name);
+        $dup_name = mysqli_query($conn, "SELECT asset_id FROM assets WHERE asset_name = '$asset_name_safe' LIMIT 1");
+        if ($dup_name && mysqli_num_rows($dup_name) > 0) {
+            $error = "An asset with this Asset Name already exists.";
+        }
+    }
+
     if ($error == "") {
         mysqli_begin_transaction($conn);
 
@@ -159,31 +181,61 @@ if (isset($_POST['save_asset'])) {
             // -----------------------------
             // INSERT INTO assets
             // -----------------------------
-            $insert_asset = "
-                INSERT INTO assets (
-                    asset_name,
-                    serial_number,
-                    category_id,
-                    model_id,
-                    vendor_id,
-                    location_id,
-                    status_id,
-                    purchase_date,
-                    warranty_expiry,
-                    cost
-                ) VALUES (
-                    '$asset_name_safe',
-                    '$serial_number_safe',
-                    '$category_id_safe',
-                    $model_id_sql,
-                    $vendor_id_sql,
-                    '$location_id_safe',
-                    '$status_id_safe',
-                    $purchase_date_sql,
-                    $warranty_expiry_sql,
-                    $cost_sql
-                )
-            ";
+            if ($has_asset_name_column) {
+                $asset_name_sql = ($asset_name !== '') ? "'$asset_name_safe'" : "NULL";
+
+                $insert_asset = "
+                    INSERT INTO assets (
+                        asset_name,
+                        model_id,
+                        serial_number,
+                        category_id,
+                        vendor_id,
+                        location_id,
+                        status_id,
+                        purchase_date,
+                        warranty_expiry,
+                        cost
+                    ) VALUES (
+                        '$asset_name_safe',
+                        $model_id_sql,
+                        '$serial_number_safe',
+                        '$category_id_safe',
+                        $vendor_id_sql,
+                        '$location_id_safe',
+                        '$status_id_safe',
+                        $purchase_date_sql,
+                        $warranty_expiry_sql,
+                        $cost_sql
+                    )
+                ";
+            } else {
+                $insert_asset = "
+                    INSERT INTO assets (
+                        asset_name,
+                        model_id,
+                        serial_number,
+                        category_id,
+                        vendor_id,
+                        location_id,
+                        status_id,
+                        purchase_date,
+                        warranty_expiry,
+                        cost
+                    ) VALUES (
+                        '$asset_name_safe',
+                        $model_id_sql,
+                        '$serial_number_safe',
+                        '$category_id_safe',
+                        $vendor_id_sql,
+                        '$location_id_safe',
+                        '$status_id_safe',
+                        $purchase_date_sql,
+                        $warranty_expiry_sql,
+                        $cost_sql
+                    )
+                ";
+            }
 
             if (!mysqli_query($conn, $insert_asset)) {
                 throw new Exception("Failed to save asset: " . mysqli_error($conn));
@@ -207,22 +259,32 @@ if (isset($_POST['save_asset'])) {
                 $assigned_date_safe  = mysqli_real_escape_string($conn, $assigned_date);
                 $assign_remarks_safe = mysqli_real_escape_string($conn, $assign_remarks);
 
-                $insert_assignment = "
-                    INSERT INTO asset_assignments (
-                        asset_id,
-                        user_id,
-                        assigned_date,
-                        remarks
-                    ) VALUES (
-                        '$asset_id_safe',
-                        '$user_id_safe',
-                        '$assigned_date_safe',
-                        '$assign_remarks_safe'
-                    )
-                ";
+                // check if already assigned (safety)
+                $check_assign = mysqli_query($conn, "
+                    SELECT assignment_id 
+                    FROM asset_assignments 
+                    WHERE asset_id = '$asset_id_safe' AND returned_date IS NULL
+                    LIMIT 1
+                ");
 
-                if (!mysqli_query($conn, $insert_assignment)) {
-                    throw new Exception("Failed to create assignment record: " . mysqli_error($conn));
+                if (!$check_assign || mysqli_num_rows($check_assign) == 0) {
+                    $insert_assignment = "
+                        INSERT INTO asset_assignments (
+                            asset_id,
+                            user_id,
+                            assigned_date,
+                            remarks
+                        ) VALUES (
+                            '$asset_id_safe',
+                            '$user_id_safe',
+                            '$assigned_date_safe',
+                            '$assign_remarks_safe'
+                        )
+                    ";
+
+                    if (!mysqli_query($conn, $insert_assignment)) {
+                        throw new Exception("Failed to create assignment record: " . mysqli_error($conn));
+                    }
                 }
             }
 
@@ -264,10 +326,19 @@ include("../../includes/sidebar.php");
                         <input type="text" name="asset_name" class="form-control"
                                value="<?= htmlspecialchars($_POST['asset_name'] ?? '') ?>" required>
                     </div>
+                </div>
+
+                <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Serial Number <span class="text-danger">*</span></label>
                         <input type="text" name="serial_number" class="form-control"
                                value="<?= htmlspecialchars($_POST['serial_number'] ?? '') ?>" required>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Purchase Date</label>
+                        <input type="date" name="purchase_date" class="form-control"
+                               value="<?= htmlspecialchars($_POST['purchase_date'] ?? '') ?>">
                     </div>
                 </div>
 
@@ -280,7 +351,7 @@ include("../../includes/sidebar.php");
                             mysqli_data_seek($categories, 0);
                             while($row = mysqli_fetch_assoc($categories)) {
                                 $selected = (($_POST['category_id'] ?? '') == $row['category_id']) ? 'selected' : '';
-                                echo "<option value='{$row['category_id']}' $selected>{$row['category_name']}</option>";
+                                echo "<option value='{$row['category_id']}' $selected>" . htmlspecialchars($row['category_name']) . "</option>";
                             }
                             ?>
                         </select>
@@ -294,7 +365,7 @@ include("../../includes/sidebar.php");
                             mysqli_data_seek($models, 0);
                             while($row = mysqli_fetch_assoc($models)) {
                                 $selected = (($_POST['model_id'] ?? '') == $row['model_id']) ? 'selected' : '';
-                                echo "<option value='{$row['model_id']}' $selected>{$row['model_name']}</option>";
+                                echo "<option value='{$row['model_id']}' $selected>" . htmlspecialchars($row['model_name']) . "</option>";
                             }
                             ?>
                         </select>
@@ -308,7 +379,7 @@ include("../../includes/sidebar.php");
                             mysqli_data_seek($vendors, 0);
                             while($row = mysqli_fetch_assoc($vendors)) {
                                 $selected = (($_POST['vendor_id'] ?? '') == $row['vendor_id']) ? 'selected' : '';
-                                echo "<option value='{$row['vendor_id']}' $selected>{$row['vendor_name']}</option>";
+                                echo "<option value='{$row['vendor_id']}' $selected>" . htmlspecialchars($row['vendor_name']) . "</option>";
                             }
                             ?>
                         </select>
@@ -342,7 +413,7 @@ include("../../includes/sidebar.php");
                             mysqli_data_seek($statuses, 0);
                             while($row = mysqli_fetch_assoc($statuses)) {
                                 $selected = (($_POST['status_id'] ?? '') == $row['status_id']) ? 'selected' : '';
-                                echo "<option value='{$row['status_id']}' $selected>{$row['status_name']}</option>";
+                                echo "<option value='{$row['status_id']}' $selected>" . htmlspecialchars($row['status_name']) . "</option>";
                             }
                             ?>
                         </select>
@@ -352,19 +423,13 @@ include("../../includes/sidebar.php");
                     </div>
 
                     <div class="col-md-4 mb-3">
-                        <label class="form-label">Purchase Date</label>
-                        <input type="date" name="purchase_date" class="form-control"
-                               value="<?= htmlspecialchars($_POST['purchase_date'] ?? '') ?>">
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-4 mb-3">
                         <label class="form-label">Warranty Expiry</label>
                         <input type="date" name="warranty_expiry" class="form-control"
                                value="<?= htmlspecialchars($_POST['warranty_expiry'] ?? '') ?>">
                     </div>
+                </div>
 
+                <div class="row">
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Cost (₹)</label>
                         <input type="number" step="0.01" min="0" name="cost" class="form-control"
@@ -419,7 +484,7 @@ include("../../includes/sidebar.php");
                                         mysqli_data_seek($users, 0);
                                         while($row = mysqli_fetch_assoc($users)) {
                                             $selected = (($_POST['user_id'] ?? '') == $row['user_id']) ? 'selected' : '';
-                                            echo "<option value='{$row['user_id']}' $selected>{$row['name']} ({$row['role']})</option>";
+                                            echo "<option value='{$row['user_id']}' $selected>" . htmlspecialchars($row['name'] . " (" . $row['role'] . ")") . "</option>";
                                         }
                                         ?>
                                     </select>

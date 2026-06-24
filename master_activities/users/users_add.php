@@ -11,14 +11,15 @@ if(isset($_POST['save'])) {
     $password = $_POST['password'];
 
     // Basic validation
-    if (($role === 'Admin' || $role === 'ICT Staff' || $role === 'Employees') && empty($password)) {
-        $error = "Password is required for Admin, ICT Staff and Employees roles.";
+    if (($role === 'Admin' || $role === 'ICT Staff') && empty($password)) {
+        $error = "Password is required for Admin and ICT Staff roles.";
     } else {
         // Hash password if provided
         $hashed_password = !empty($password) ? password_hash($password, PASSWORD_DEFAULT) : null;
-        
+
         $query = "INSERT INTO users (name, email, phone, role, password) 
-                  VALUES ('$name', '$email', '$phone', '$role', '$hashed_password')";
+                  VALUES ('$name', '$email', '$phone', '$role', " . 
+                  ($hashed_password ? "'$hashed_password'" : "NULL") . ")";
         
         if(mysqli_query($conn, $query)) {
             header("Location: users_list.php");
@@ -51,7 +52,7 @@ include("../../includes/sidebar.php");
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Email Address</label>
-                        <input type="email" name="email" class="form-control" placeholder="e.g. john@company.com" required>
+                        <input type="email" name="email" class="form-control" placeholder="e.g. john@company.com">
                     </div>
                 </div>
 
@@ -66,6 +67,7 @@ include("../../includes/sidebar.php");
                             <option value="Employee">Employee - Asset Holder</option>
                             <option value="Admin">Admin - System Access</option>
                             <option value="ICT Staff">ICT Staff</option>
+                            <option value="Server">Server</option>
                         </select>
                     </div>
                 </div>
@@ -100,7 +102,6 @@ function togglePassword() {
         passwordInput.value = "";
     }
 }
-// Run on load to set initial state
 document.addEventListener('DOMContentLoaded', togglePassword);
 </script>
 
