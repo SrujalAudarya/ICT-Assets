@@ -235,7 +235,7 @@ $result = mysqli_query($conn, $query);
                                     <td><?= $row['user_id'] ?></td>
 
                                     <td class="fw-bold">
-                                        <a href="users_view.php?id=<?= $row['user_id'] ?>" class="text-decoration-none">
+                                        <a href="users_view.php?id=<?= $row['user_id'] ?>" class="text-decoration-none text-uppercase">
                                             <?= htmlspecialchars($row['name']) ?>
                                         </a>
                                     </td>
@@ -309,7 +309,6 @@ $result = mysqli_query($conn, $query);
     <div class="mt-3">
         <small class="text-muted">
             CSV format for import: <b>Full Name, Phone Number, System Role</b><br>
-            Example: <b>Rajesh Kumar,9876543210,Employee</b><br>
             <span class="text-danger">Note:</span> Upload only <b>.csv</b> file. Excel <b>.xlsx</b> file will not import in this version.
         </small>
     </div>

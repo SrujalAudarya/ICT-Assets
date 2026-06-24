@@ -492,7 +492,7 @@ LEFT JOIN asset_assignments aa
    AND aa.returned_date IS NULL
 LEFT JOIN users u ON aa.user_id = u.user_id
 $where
-ORDER BY a.asset_id DESC
+ORDER BY a.asset_id ASC
 LIMIT $limit OFFSET $offset
 ";
 
