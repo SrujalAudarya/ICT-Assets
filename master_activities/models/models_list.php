@@ -95,9 +95,11 @@ $result = mysqli_query($conn, $query);
 
                     <tbody>
                     <?php if(mysqli_num_rows($result) > 0): ?>
+                        <?php $sr = 1; ?>
                         <?php while($row = mysqli_fetch_assoc($result)): ?>
                             <tr>
-                                <td><?= $row['model_id'] ?></td>
+                                <!-- Serial Number instead of actual model_id -->
+                                <td><?= $sr++ ?></td>
 
                                 <td class="fw-bold">
                                     <a href="models_details.php?id=<?= $row['model_id'] ?>" class="text-decoration-none">

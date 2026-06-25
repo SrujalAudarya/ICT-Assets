@@ -188,8 +188,8 @@ $result = mysqli_query($conn, $query);
                 <div class="col-md-6">
                     <label class="form-label">Search</label>
                     <input type="text" name="search" class="form-control"
-                           placeholder="Search by name, email or phone..."
-                           value="<?= htmlspecialchars($search) ?>">
+                        placeholder="Search by name, email or phone..."
+                        value="<?= htmlspecialchars($search) ?>">
                 </div>
 
                 <div class="col-md-3">
@@ -230,9 +230,11 @@ $result = mysqli_query($conn, $query);
 
                     <tbody>
                         <?php if (mysqli_num_rows($result) > 0): ?>
+                            <?php $sr = $offset + 1; ?>
                             <?php while ($row = mysqli_fetch_assoc($result)): ?>
                                 <tr>
-                                    <td><?= $row['user_id'] ?></td>
+                                    <!-- Serial Number shown instead of actual user_id -->
+                                    <td><?= $sr++ ?></td>
 
                                     <td class="fw-bold">
                                         <a href="users_view.php?id=<?= $row['user_id'] ?>" class="text-decoration-none text-uppercase">
@@ -263,9 +265,9 @@ $result = mysqli_query($conn, $query);
                                             <a href="users_view.php?id=<?= $row['user_id'] ?>" class="btn btn-info">View</a>
                                             <a href="users_edit.php?id=<?= $row['user_id'] ?>" class="btn btn-warning">Edit</a>
                                             <a href="users_delete.php?id=<?= $row['user_id'] ?>"
-                                               class="btn btn-danger"
-                                               onclick="return confirm('Are you sure you want to delete this user?')">
-                                               Delete
+                                                class="btn btn-danger"
+                                                onclick="return confirm('Are you sure you want to delete this user?')">
+                                                Delete
                                             </a>
                                         </div>
                                     </td>
@@ -297,8 +299,8 @@ $result = mysqli_query($conn, $query);
                 <?php for ($i = 1; $i <= $total_pages; $i++): ?>
                     <li class="page-item <?= ($i == $page) ? 'active' : '' ?>">
                         <a class="page-link"
-                           href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&role=<?= urlencode($role) ?>">
-                           <?= $i ?>
+                            href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&role=<?= urlencode($role) ?>">
+                            <?= $i ?>
                         </a>
                     </li>
                 <?php endfor; ?>
