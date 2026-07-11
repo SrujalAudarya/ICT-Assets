@@ -200,6 +200,7 @@ $result = mysqli_query($conn, $query);
                         <option value="ICT Staff" <?= ($role == 'ICT Staff') ? 'selected' : '' ?>>ICT Staff</option>
                         <option value="Employee" <?= ($role == 'Employee') ? 'selected' : '' ?>>Employee</option>
                         <option value="Server" <?= ($role == 'Server') ? 'selected' : '' ?>>Server</option>
+                        <option value="DRC Room" <?= ($role == 'DRC Room') ? 'selected' : '' ?>>DRC Room</option>
                     </select>
                 </div>
 
@@ -252,6 +253,7 @@ $result = mysqli_query($conn, $query);
                                         if ($row['role'] == 'ICT Staff') $role_class = 'bg-primary';
                                         if ($row['role'] == 'Employee') $role_class = 'bg-success';
                                         if ($row['role'] == 'Server') $role_class = 'bg-dark';
+                                        if ($row['role'] == 'DRC Room') $role_class = 'bg-warning text-dark';
                                         ?>
                                         <span class="badge <?= $role_class ?>"><?= htmlspecialchars($row['role']) ?></span>
                                     </td>

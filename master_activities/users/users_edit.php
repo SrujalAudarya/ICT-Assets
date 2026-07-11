@@ -84,11 +84,12 @@ include("../../includes/sidebar.php");
                             <option value="Admin" <?= ($data['role'] == 'Admin') ? 'selected' : '' ?>>Admin (System Access)</option>
                             <option value="ICT Staff" <?= ($data['role'] == 'ICT Staff') ? 'selected' : '' ?>>ICT Staff</option>
                             <option value="Server" <?= ($data['role'] == 'Server') ? 'selected' : '' ?>>Server</option>
+                            <option value="DRC Room" <?= ($data['role'] == 'DRC Room') ? 'selected' : '' ?>>DRC Room</option>
                         </select>
                     </div>
                 </div>
 
-                <div id="passwordField" style="<?= ($data['role'] == 'Admin' || $data['role'] == 'ICT Staff') ? 'display:block;' : 'display:none;' ?>" class="mb-3">
+                <div id="passwordField" style="<?= ($data['role'] == 'Admin' || $data['role'] == 'ICT Staff' || $data['role'] == 'DRC Room') ? 'display:block;' : 'display:none;' ?>" class="mb-3">
                     <label class="form-label">System Password</label>
                     <input type="password" name="password" id="passwordInput" class="form-control" placeholder="Leave blank to keep current password">
                     <small class="text-muted">Required for Admin and ICT Staff roles if not already set.</small>

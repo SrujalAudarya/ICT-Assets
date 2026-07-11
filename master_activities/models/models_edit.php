@@ -83,7 +83,7 @@ include("../../includes/sidebar.php");
                     </div>
 
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Party / Vendor</label>
+                        <label class="form-label">Vendor</label>
                         <select name="vendor_id" class="form-select" required>
                             <?php
                             $res = mysqli_query($conn, "SELECT * FROM vendors ORDER BY vendor_name ASC");

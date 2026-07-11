@@ -43,11 +43,13 @@ if($location != ""){
 
 /* ---------- ASSETS FROM THIS MODEL ---------- */
 $assets_query = "
-SELECT a.*, c.category_name, s.status_name, l.dept_name
+SELECT a.*, u.name as user_name, c.category_name, s.status_name, l.dept_name
 FROM assets a
 LEFT JOIN asset_categories c ON a.category_id = c.category_id
 LEFT JOIN asset_status s ON a.status_id = s.status_id
 LEFT JOIN locations l ON a.location_id = l.location_id
+LEFT JOIN asset_assignments asn ON a.asset_id = asn.asset_id
+LEFT JOIN users u ON asn.user_id = u.user_id
 $where
 ORDER BY a.asset_id DESC
 ";
@@ -80,7 +82,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                         <tr><th width="40%">Model Name</th><td><?= htmlspecialchars($model['model_name']) ?></td></tr>
                         <tr><th>Make</th><td><?= htmlspecialchars($model['make_name'] ?: 'N/A') ?></td></tr>
                         <tr><th>Category</th><td><?= htmlspecialchars($model['category_name'] ?: 'N/A') ?></td></tr>
-                        <tr><th>Party / Vendor</th><td><?= htmlspecialchars($model['vendor_name'] ?: 'N/A') ?></td></tr>
+                        <tr><th>Vendor</th><td><?= htmlspecialchars($model['vendor_name'] ?: 'N/A') ?></td></tr>
                         <tr><th>Contract No</th><td><?= htmlspecialchars($model['contract_no'] ?: 'N/A') ?></td></tr>
                         <tr><th>Quantity</th><td><?= (int)($model['quantity'] ?? 0) ?></td></tr>
                         <tr><th>Date</th><td><?= !empty($model['purchase_date']) ? date('d M Y', strtotime($model['purchase_date'])) : 'N/A' ?></td></tr>
@@ -174,6 +176,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                             <thead class="table-light">
                                 <tr>
                                     <th>Asset Name</th>
+                                    <th>User Name</th>
                                     <th>Serial No</th>
                                     <th>Category</th>
                                     <th>Status</th>
@@ -186,6 +189,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                                     <?php while($asset = mysqli_fetch_assoc($assets_result)): ?>
                                         <tr>
                                             <td class="fw-bold"><?= htmlspecialchars($asset['asset_name']) ?></td>
+                                            <td class="fw-bold"><?= htmlspecialchars($asset['user_name'] ?? 'N/A') ?></td>
                                             <td><code><?= htmlspecialchars($asset['serial_number']) ?></code></td>
                                             <td><?= htmlspecialchars($asset['category_name'] ?? 'N/A') ?></td>
                                             <td><span class="badge bg-info"><?= htmlspecialchars($asset['status_name'] ?? 'N/A') ?></span></td>
@@ -197,7 +201,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                                     <?php endwhile; ?>
                                 <?php else: ?>
                                     <tr>
-                                        <td colspan="6" class="text-center py-4 text-muted">No assets found matching your criteria.</td>
+                                        <td colspan="7" class="text-center py-4 text-muted">No assets found matching your criteria.</td>
                                     </tr>
                                 <?php endif; ?>
                             </tbody>

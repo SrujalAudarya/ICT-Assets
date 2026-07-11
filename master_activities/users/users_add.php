@@ -68,6 +68,7 @@ include("../../includes/sidebar.php");
                             <option value="Admin">Admin - System Access</option>
                             <option value="ICT Staff">ICT Staff</option>
                             <option value="Server">Server</option>
+                            <option value="DRC Room">DRC Room</option>
                         </select>
                     </div>
                 </div>
@@ -93,7 +94,7 @@ function togglePassword() {
     var passwordField = document.getElementById("passwordField");
     var passwordInput = document.getElementById("passwordInput");
     
-    if (role === "Admin" || role === "ICT Staff") {
+    if (role === "Admin" || role === "ICT Staff" || role === "DRC Room") {
         passwordField.style.display = "block";
         passwordInput.required = true;
     } else {

@@ -31,7 +31,6 @@ if (!empty($search)) {
                 OR c.category_name LIKE '%$search%'
                 OR v.vendor_name LIKE '%$search%'
                 OR m.make_name LIKE '%$search%'
-                OR m.party_name LIKE '%$search%'
                 OR m.contract_no LIKE '%$search%'
                 OR m.financial_year LIKE '%$search%'";
 }
@@ -61,7 +60,7 @@ $result = mysqli_query($conn, $query);
                     type="text"
                     name="search"
                     class="form-control"
-                    placeholder="Search by Model, Category, Vendor, Make, Party, Contract No..."
+                    placeholder="Search by Model, Category, Vendor, Make, Contract No..."
                     value="<?= htmlspecialchars($search) ?>"
                 >
             </div>
@@ -84,7 +83,6 @@ $result = mysqli_query($conn, $query);
                             <th>Category</th>
                             <th>Vendor</th>
                             <th>Make</th>
-                            <th>Party</th>
                             <th>Contract No</th>
                             <th>Qty</th>
                             <th>F.Y.</th>
@@ -110,7 +108,6 @@ $result = mysqli_query($conn, $query);
                                 <td><?= htmlspecialchars($row['category_name'] ?? '') ?></td>
                                 <td><?= htmlspecialchars($row['vendor_name'] ?? '') ?></td>
                                 <td><?= htmlspecialchars($row['make_name'] ?? '') ?></td>
-                                <td><?= htmlspecialchars($row['party_name'] ?? '') ?></td>
                                 <td><?= htmlspecialchars($row['contract_no'] ?? '') ?></td>
                                 <td><?= htmlspecialchars($row['quantity'] ?? '0') ?></td>
                                 <td><?= htmlspecialchars($row['financial_year'] ?? '') ?></td>

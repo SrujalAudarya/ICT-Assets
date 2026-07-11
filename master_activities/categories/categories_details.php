@@ -41,11 +41,13 @@ if($location != ""){
 
 /* ---------- ASSETS IN THIS CATEGORY ---------- */
 $assets_query = "
-SELECT a.*, s.status_name, l.dept_name, m.model_name
+SELECT a.*,u.name as user_name, s.status_name, l.dept_name, m.model_name
 FROM assets a
 LEFT JOIN asset_status s ON a.status_id = s.status_id
 LEFT JOIN locations l ON a.location_id = l.location_id
 LEFT JOIN asset_models m ON a.model_id = m.model_id
+LEFT JOIN asset_assignments asn ON a.asset_id = asn.asset_id
+LEFT JOIN users u ON asn.user_id = u.user_id
 $where
 ORDER BY a.asset_id DESC
 ";
@@ -182,6 +184,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                             <thead class="table-light">
                                 <tr>
                                     <th>Asset Name</th>
+                                    <th>User Name</th>
                                     <th>Serial No</th>
                                     <th>Model</th>
                                     <th>Status</th>
@@ -194,6 +197,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                                     <?php while($asset = mysqli_fetch_assoc($assets_result)): ?>
                                         <tr>
                                             <td class="fw-bold"><?= htmlspecialchars($asset['asset_name']) ?></td>
+                                            <td class="fw-bold"><?= htmlspecialchars($asset['user_name']) ?></td>
                                             <td><code><?= htmlspecialchars($asset['serial_number']) ?></code></td>
                                             <td><?= htmlspecialchars($asset['model_name'] ?? 'N/A') ?></td>
                                             <td>

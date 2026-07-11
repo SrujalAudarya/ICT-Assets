@@ -10,7 +10,8 @@ include("../../config/db.php");
 /**
  * Parse purchase date into Y-m-d or return NULL
  */
-function parsePurchaseDate($rawDate) {
+function parsePurchaseDate($rawDate)
+{
     $rawDate = trim($rawDate);
     if ($rawDate === '') return null;
 
@@ -59,7 +60,8 @@ function parsePurchaseDate($rawDate) {
 /**
  * Detect delimiter and split line
  */
-function parseCsvLine($line) {
+function parseCsvLine($line)
+{
     $line = trim($line);
 
     if ($line === '') return [];
@@ -76,7 +78,8 @@ function parseCsvLine($line) {
 /**
  * Get or create category_id from asset_categories
  */
-function getCategoryId($conn, $categoryName) {
+function getCategoryId($conn, $categoryName)
+{
     $categoryName = trim($categoryName);
     if ($categoryName === '') return null;
 
@@ -94,7 +97,8 @@ function getCategoryId($conn, $categoryName) {
 /**
  * Get or create location_id from locations using dept_name
  */
-function getLocationId($conn, $deptName) {
+function getLocationId($conn, $deptName)
+{
     $deptName = trim($deptName);
     if ($deptName === '') return null;
 
@@ -112,7 +116,8 @@ function getLocationId($conn, $deptName) {
 /**
  * Get or create model_id from asset_models
  */
-function getModelId($conn, $modelName, $category_id = null, $vendor_id = null) {
+function getModelId($conn, $modelName, $category_id = null, $vendor_id = null)
+{
     $modelName = trim($modelName);
     if ($modelName === '') return null;
 
@@ -136,7 +141,8 @@ function getModelId($conn, $modelName, $category_id = null, $vendor_id = null) {
 /**
  * Get or create vendor_id from vendors
  */
-function getVendorId($conn, $vendorName) {
+function getVendorId($conn, $vendorName)
+{
     $vendorName = trim($vendorName);
     if ($vendorName === '') return null;
 
@@ -154,7 +160,8 @@ function getVendorId($conn, $vendorName) {
 /**
  * Get status_id
  */
-function getStatusId($conn, $hasAssignedUser = false) {
+function getStatusId($conn, $hasAssignedUser = false)
+{
     if ($hasAssignedUser) {
         $res = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name = 'Assigned' LIMIT 1");
         if ($res && mysqli_num_rows($res) > 0) {
@@ -187,7 +194,7 @@ function getStatusId($conn, $hasAssignedUser = false) {
 /* =========================================================
    IMPORT ASSETS FROM CSV
    CSV format:
-   Assigned User Name,Category,Serial Number,Department,Vendor,Asset Code,Model Name,Asset Name,Purchase Date
+   Assigned User Name,Category,Serial Number,Department,Vendor,Model Name,Asset Name,Purchase Date
    ========================================================= */
 if (isset($_POST['import_assets_excel'])) {
 
@@ -228,25 +235,19 @@ if (isset($_POST['import_assets_excel'])) {
                       [2] Serial Number
                       [3] Department
                       [4] Vendor
-                      [5] Asset Code
-                      [6] Model Name
-                      [7] Asset Name
-                      [8] Purchase Date
+                      [5] Model Name
+                      [6] Asset Name
+                      [7] Purchase Date
                     */
-
-                    if (count($row) < 9 && isset($row[0])) {
-                        $row = preg_split('/\s{2,}|\t/', trim($row[0]));
-                    }
 
                     $assignedUserName = trim($row[0] ?? '');
                     $categoryName     = trim($row[1] ?? '');
                     $serialNumber     = trim($row[2] ?? '');
                     $deptName         = trim($row[3] ?? '');
                     $vendorName       = trim($row[4] ?? '');
-                    $assetCode        = trim($row[5] ?? ''); // ignore if not needed
-                    $modelName        = trim($row[6] ?? '');
-                    $assetName        = trim($row[7] ?? '');
-                    $purchaseDateRaw  = trim($row[8] ?? '');
+                    $modelName        = trim($row[5] ?? '');
+                    $assetName        = trim($row[6] ?? '');
+                    $purchaseDateRaw  = trim($row[7] ?? '');
 
                     // Skip fully blank rows
                     if (
@@ -255,7 +256,6 @@ if (isset($_POST['import_assets_excel'])) {
                         $serialNumber === '' &&
                         $deptName === '' &&
                         $vendorName === '' &&
-                        $assetCode === '' &&
                         $modelName === '' &&
                         $assetName === '' &&
                         $purchaseDateRaw === ''
@@ -265,9 +265,9 @@ if (isset($_POST['import_assets_excel'])) {
 
                     // Required fields
                     if ($serialNumber === '' || $assetName === '') {
-                        $failCount++;
-                        $failedRows[] = "Row $rowCount: Serial Number or Asset Name missing";
-                        continue;
+                        die("Validation Failed<br>" .
+                            "Serial = [" . $serialNumber . "]<br>" .
+                            "Asset = [" . $assetName . "]");
                     }
 
                     $assignedUserNameEsc = mysqli_real_escape_string($conn, $assignedUserName);
@@ -368,7 +368,6 @@ if (isset($_POST['import_assets_excel'])) {
                 if (!empty($failedRows)) {
                     $error = implode("<br>", $failedRows);
                 }
-
             } else {
                 $error = "Unable to open uploaded CSV file.";
             }
@@ -473,21 +472,21 @@ $result = mysqli_query($conn, $query);
             </button>
 
             <input type="file"
-                   name="asset_excel_file"
-                   id="assetExcelFile"
-                   accept=".csv"
-                   style="display:none;"
-                   onchange="document.getElementById('assetImportBtn').click();">
+                name="asset_excel_file"
+                id="assetExcelFile"
+                accept=".csv"
+                style="display:none;"
+                onchange="document.getElementById('assetImportBtn').click();">
 
             <button type="submit" name="import_assets_excel" id="assetImportBtn" style="display:none;">Import</button>
         </form>
     </div>
 
-    <?php if(isset($error)): ?>
+    <?php if (isset($error)): ?>
         <div class="alert alert-danger"><?= $error ?></div>
     <?php endif; ?>
 
-    <?php if(isset($success_msg)): ?>
+    <?php if (isset($success_msg)): ?>
         <div class="alert alert-success"><?= $success_msg ?></div>
     <?php endif; ?>
 
@@ -498,8 +497,8 @@ $result = mysqli_query($conn, $query);
                 <div class="col-md-3">
                     <label class="form-label">Search</label>
                     <input type="text" name="search" class="form-control"
-                           placeholder="Asset Name / Serial No"
-                           value="<?= htmlspecialchars($search) ?>">
+                        placeholder="Asset Name / Serial No"
+                        value="<?= htmlspecialchars($search) ?>">
                 </div>
 
                 <div class="col-md-2">
@@ -508,7 +507,7 @@ $result = mysqli_query($conn, $query);
                         <option value="">All Categories</option>
                         <?php
                         $cats = mysqli_query($conn, "SELECT * FROM asset_categories ORDER BY category_name ASC");
-                        while($c = mysqli_fetch_assoc($cats)){
+                        while ($c = mysqli_fetch_assoc($cats)) {
                             $selected = ($category == $c['category_id']) ? 'selected' : '';
                             echo "<option value='{$c['category_id']}' $selected>" . htmlspecialchars($c['category_name']) . "</option>";
                         }
@@ -522,7 +521,7 @@ $result = mysqli_query($conn, $query);
                         <option value="">All Models</option>
                         <?php
                         $mods = mysqli_query($conn, "SELECT * FROM asset_models ORDER BY model_name ASC");
-                        while($m = mysqli_fetch_assoc($mods)){
+                        while ($m = mysqli_fetch_assoc($mods)) {
                             $selected = ($model == $m['model_id']) ? 'selected' : '';
                             echo "<option value='{$m['model_id']}' $selected>" . htmlspecialchars($m['model_name']) . "</option>";
                         }
@@ -536,7 +535,7 @@ $result = mysqli_query($conn, $query);
                         <option value="">All Status</option>
                         <?php
                         $sts = mysqli_query($conn, "SELECT * FROM asset_status ORDER BY status_name ASC");
-                        while($s = mysqli_fetch_assoc($sts)){
+                        while ($s = mysqli_fetch_assoc($sts)) {
                             $selected = ($status == $s['status_id']) ? 'selected' : '';
                             echo "<option value='{$s['status_id']}' $selected>" . htmlspecialchars($s['status_name']) . "</option>";
                         }
@@ -550,7 +549,7 @@ $result = mysqli_query($conn, $query);
                         <option value="">All Locations</option>
                         <?php
                         $loc = mysqli_query($conn, "SELECT * FROM locations ORDER BY dept_name ASC");
-                        while($l = mysqli_fetch_assoc($loc)){
+                        while ($l = mysqli_fetch_assoc($loc)) {
                             $selected = ($location == $l['location_id']) ? 'selected' : '';
                             echo "<option value='{$l['location_id']}' $selected>" . htmlspecialchars($l['dept_name']) . "</option>";
                         }
@@ -565,92 +564,92 @@ $result = mysqli_query($conn, $query);
         </div>
     </div>
 
-<!-- TABLE -->
-<div class="card shadow-sm">
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover table-striped mb-0">
-                <thead class="table-dark">
-                    <tr>
-                        <th>Sr No</th>
-                        <th>Asset Name</th>
-                        <th>Serial No</th>
-                        <th>Category</th>
-                        <th>Model</th>
-                        <th>Vendor</th>
-                        <th>Status</th>
-                        <th>Location</th>
-                        <th>Assigned To</th>
-                        <th>Purchase Date</th>
-                        <th class="text-center">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if($result && mysqli_num_rows($result) > 0): ?>
-                        <?php $sr = $offset + 1; ?>
-                        <?php while($row = mysqli_fetch_assoc($result)): ?>
-                            <tr>
-                                <td><?= $sr++ ?></td>
-
-                                <td class="fw-bold">
-                                    <a href="asset_details.php?id=<?= $row['asset_id'] ?>" class="text-decoration-none">
-                                        <?= htmlspecialchars($row['asset_name']) ?>
-                                    </a>
-                                </td>
-
-                                <td><code><?= htmlspecialchars($row['serial_number']) ?></code></td>
-                                <td><?= htmlspecialchars($row['category_name'] ?? 'N/A') ?></td>
-                                <td><?= htmlspecialchars($row['model_name'] ?? 'N/A') ?></td>
-                                <td><?= htmlspecialchars($row['vendor_name'] ?? 'N/A') ?></td>
-
-                                <td>
-                                    <?php
-                                    $badge_class = 'bg-secondary';
-                                    if (($row['status_name'] ?? '') == 'Assigned') $badge_class = 'bg-primary';
-                                    elseif (in_array(($row['status_name'] ?? ''), ['Available', 'Working'])) $badge_class = 'bg-success';
-                                    elseif (($row['status_name'] ?? '') == 'Under Repair') $badge_class = 'bg-warning text-dark';
-                                    elseif (in_array(($row['status_name'] ?? ''), ['Retired', 'Condemned'])) $badge_class = 'bg-danger';
-                                    ?>
-                                    <span class="badge <?= $badge_class ?>">
-                                        <?= htmlspecialchars($row['status_name'] ?? 'N/A') ?>
-                                    </span>
-                                </td>
-
-                                <td><?= htmlspecialchars($row['dept_name'] ?? 'N/A') ?></td>
-
-                                <td>
-                                    <?php if(!empty($row['assigned_user_name'])): ?>
-                                        <?= htmlspecialchars($row['assigned_user_name']) ?>
-                                    <?php else: ?>
-                                        <span class="text-muted">Not Assigned</span>
-                                    <?php endif; ?>
-                                </td>
-
-                                <td>
-                                    <?= !empty($row['purchase_date']) ? date('d-m-Y', strtotime($row['purchase_date'])) : '-' ?>
-                                </td>
-
-                                <td class="text-center">
-                                    <div class="btn-group btn-group-sm">
-                                        <a href="asset_details.php?id=<?= $row['asset_id'] ?>" class="btn btn-info">View</a>
-                                        <a href="assets_edit.php?id=<?= $row['asset_id'] ?>" class="btn btn-warning">Edit</a>
-                                        <a href="asset_delete.php?id=<?= $row['asset_id'] ?>"
-                                           class="btn btn-danger"
-                                           onclick="return confirm('Are you sure you want to delete this asset?')">Delete</a>
-                                    </div>
-                                </td>
-                            </tr>
-                        <?php endwhile; ?>
-                    <?php else: ?>
+    <!-- TABLE -->
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="table-dark">
                         <tr>
-                            <td colspan="11" class="text-center py-4 text-muted">No assets found.</td>
+                            <th>Sr No</th>
+                            <th>Asset Name</th>
+                            <th>Serial No</th>
+                            <th>Category</th>
+                            <th>Model</th>
+                            <th>Vendor</th>
+                            <th>Status</th>
+                            <th>Location</th>
+                            <th>Assigned To</th>
+                            <th>Purchase Date</th>
+                            <th class="text-center">Actions</th>
                         </tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        <?php if ($result && mysqli_num_rows($result) > 0): ?>
+                            <?php $sr = $offset + 1; ?>
+                            <?php while ($row = mysqli_fetch_assoc($result)): ?>
+                                <tr>
+                                    <td><?= $sr++ ?></td>
+
+                                    <td class="fw-bold">
+                                        <a href="asset_details.php?id=<?= $row['asset_id'] ?>" class="text-decoration-none">
+                                            <?= htmlspecialchars($row['asset_name']) ?>
+                                        </a>
+                                    </td>
+
+                                    <td><code><?= htmlspecialchars($row['serial_number']) ?></code></td>
+                                    <td><?= htmlspecialchars($row['category_name'] ?? 'N/A') ?></td>
+                                    <td><?= htmlspecialchars($row['model_name'] ?? 'N/A') ?></td>
+                                    <td><?= htmlspecialchars($row['vendor_name'] ?? 'N/A') ?></td>
+
+                                    <td>
+                                        <?php
+                                        $badge_class = 'bg-secondary';
+                                        if (($row['status_name'] ?? '') == 'Assigned') $badge_class = 'bg-primary';
+                                        elseif (in_array(($row['status_name'] ?? ''), ['Available', 'Working'])) $badge_class = 'bg-success';
+                                        elseif (($row['status_name'] ?? '') == 'Under Repair') $badge_class = 'bg-warning text-dark';
+                                        elseif (in_array(($row['status_name'] ?? ''), ['Retired', 'Condemned'])) $badge_class = 'bg-danger';
+                                        ?>
+                                        <span class="badge <?= $badge_class ?>">
+                                            <?= htmlspecialchars($row['status_name'] ?? 'N/A') ?>
+                                        </span>
+                                    </td>
+
+                                    <td><?= htmlspecialchars($row['dept_name'] ?? 'N/A') ?></td>
+
+                                    <td>
+                                        <?php if (!empty($row['assigned_user_name'])): ?>
+                                            <?= htmlspecialchars($row['assigned_user_name']) ?>
+                                        <?php else: ?>
+                                            <span class="text-muted">Not Assigned</span>
+                                        <?php endif; ?>
+                                    </td>
+
+                                    <td>
+                                        <?= !empty($row['purchase_date']) ? date('d-m-Y', strtotime($row['purchase_date'])) : '-' ?>
+                                    </td>
+
+                                    <td class="text-center">
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="asset_details.php?id=<?= $row['asset_id'] ?>" class="btn btn-info">View</a>
+                                            <a href="assets_edit.php?id=<?= $row['asset_id'] ?>" class="btn btn-warning">Edit</a>
+                                            <a href="asset_delete.php?id=<?= $row['asset_id'] ?>"
+                                                class="btn btn-danger"
+                                                onclick="return confirm('Are you sure you want to delete this asset?')">Delete</a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endwhile; ?>
+                        <?php else: ?>
+                            <tr>
+                                <td colspan="11" class="text-center py-4 text-muted">No assets found.</td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
-</div>
 
     <!-- PAGINATION -->
     <?php
@@ -664,13 +663,13 @@ $result = mysqli_query($conn, $query);
     $totalPages = ceil($totalRows / $limit);
     ?>
 
-    <?php if($totalPages > 1): ?>
+    <?php if ($totalPages > 1): ?>
         <nav class="mt-4">
             <ul class="pagination justify-content-center">
-                <?php for($i=1; $i<=$totalPages; $i++): ?>
+                <?php for ($i = 1; $i <= $totalPages; $i++): ?>
                     <li class="page-item <?= ($page == $i) ? 'active' : '' ?>">
                         <a class="page-link"
-                           href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&category=<?= urlencode($category) ?>&status=<?= urlencode($status) ?>&location=<?= urlencode($location) ?>&model=<?= urlencode($model) ?>">
+                            href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&category=<?= urlencode($category) ?>&status=<?= urlencode($status) ?>&location=<?= urlencode($location) ?>&model=<?= urlencode($model) ?>">
                             <?= $i ?>
                         </a>
                     </li>

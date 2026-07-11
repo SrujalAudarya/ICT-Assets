@@ -9,4 +9,4 @@ $id = $_GET['id'];
 
 mysqli_query($conn, "DELETE FROM locations WHERE location_id=$id");
 
-header("Location: locations_list.php");
+// header("Location: locations_list.php");
