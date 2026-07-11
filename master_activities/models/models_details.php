@@ -2,8 +2,6 @@
 global $conn;
 include("../../includes/auth.php");
 include("../../config/db.php");
-include("../../includes/header.php");
-include("../../includes/sidebar.php");
 
 $id = mysqli_real_escape_string($conn, $_GET['id']);
 
@@ -20,6 +18,7 @@ $model_query = "
 $model = mysqli_fetch_assoc(mysqli_query($conn, $model_query));
 
 if (!$model) {
+    include("../../includes/header.php");
     echo "<div class='container mt-4'><div class='alert alert-danger'>Model not found.</div></div>";
     include("../../includes/footer.php");
     exit();
@@ -53,6 +52,63 @@ LEFT JOIN users u ON asn.user_id = u.user_id
 $where
 ORDER BY a.asset_id DESC
 ";
+
+/* =========================================================
+   EXPORT LOGIC (EXCEL & CSV)
+   ========================================================= */
+if (isset($_GET['export'])) {
+    $export_res = mysqli_query($conn, $assets_query);
+    $clean_model_name = preg_replace('/[^A-Za-z0-9_\-]/', '_', $model['model_name']);
+    $filename = "Model_Assets_" . $clean_model_name . "_" . date('Y-m-d');
+
+    /* ---------------- EXCEL EXPORT ---------------- */
+    if ($_GET['export'] == 'excel') {
+        header('Content-Type: application/vnd.ms-excel');
+        header('Content-Disposition: attachment; filename="' . $filename . '.xls"');
+        echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+        echo '<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style>td{border:0.5pt solid #000;} th{background-color:#D3D3D3; font-weight:bold; border:0.5pt solid #000;}</style></head><body>';
+        echo '<table><tr><th colspan="6" style="font-size:14pt;">Assets in Model: ' . htmlspecialchars($model['model_name']) . '</th></tr>';
+        echo '<tr><th>Asset Name</th><th>User Name</th><th>Serial No</th><th>Category</th><th>Status</th><th>Location</th></tr>';
+        
+        while ($r = mysqli_fetch_assoc($export_res)) {
+            echo "<tr>
+                    <td>{$r['asset_name']}</td>
+                    <td>" . ($r['user_name'] ?? 'N/A') . "</td>
+                    <td>{$r['serial_number']}</td>
+                    <td>" . ($r['category_name'] ?? 'N/A') . "</td>
+                    <td>" . ($r['status_name'] ?? 'N/A') . "</td>
+                    <td>" . ($r['dept_name'] ?? 'N/A') . "</td>
+                  </tr>";
+        }
+        echo '</table></body></html>';
+        exit();
+    }
+    
+    /* ---------------- CSV EXPORT ---------------- */
+    if ($_GET['export'] == 'csv') {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
+        $output = fopen('php://output', 'w');
+        fputcsv($output, ['Asset Name', 'User Name', 'Serial No', 'Category', 'Status', 'Location']);
+        
+        while ($r = mysqli_fetch_assoc($export_res)) {
+            fputcsv($output, [
+                $r['asset_name'],
+                $r['user_name'] ?? 'N/A',
+                $r['serial_number'],
+                $r['category_name'] ?? 'N/A',
+                $r['status_name'] ?? 'N/A',
+                $r['dept_name'] ?? 'N/A'
+            ]);
+        }
+        fclose($output);
+        exit();
+    }
+}
+
+include("../../includes/header.php");
+include("../../includes/sidebar.php");
+
 $assets_result = mysqli_query($conn, $assets_query);
 $filtered_count = mysqli_num_rows($assets_result);
 
@@ -64,7 +120,18 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Model Profile: <?= htmlspecialchars($model['model_name']) ?></h2>
-        <div>
+        <div class="d-flex gap-2 flex-wrap">
+            <!-- Export Dropdown -->
+            <div class="dropdown">
+                <button class="btn btn-outline-dark dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                    <i class="bi bi-download"></i> Export
+                </button>
+                <ul class="dropdown-menu shadow">
+                    <li><a class="dropdown-item" href="javascript:void(0)" onclick="exportToPDF()"><i class="bi bi-file-earmark-pdf text-danger"></i> Export as PDF</a></li>
+                    <li><a class="dropdown-item" href="?id=<?= $id ?>&status=<?= $status ?>&location=<?= $location ?>&export=excel"><i class="bi bi-file-earmark-excel text-success"></i> Export as Excel</a></li>
+                    <li><a class="dropdown-item" href="?id=<?= $id ?>&status=<?= $status ?>&location=<?= $location ?>&export=csv"><i class="bi bi-file-earmark-text text-primary"></i> Export as CSV</a></li>
+                </ul>
+            </div>
             <a href="<?= ROUTE_MODELS_EDIT ?>?id=<?= $id ?>" class="btn btn-warning">Edit Model</a>
             <a href="<?= ROUTE_MODELS ?>" class="btn btn-secondary">Back to List</a>
         </div>
@@ -172,7 +239,8 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover table-striped mb-0">
+                        <!-- ADDED ID="assetsTable" HERE FOR PDF EXPORT -->
+                        <table class="table table-hover table-striped mb-0" id="assetsTable">
                             <thead class="table-light">
                                 <tr>
                                     <th>Asset Name</th>
@@ -181,7 +249,8 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                                     <th>Category</th>
                                     <th>Status</th>
                                     <th>Location</th>
-                                    <th class="text-center">Action</th>
+                                    <!-- ADDED "no-export" CLASS HERE -->
+                                    <th class="text-center no-export">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -194,7 +263,8 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                                             <td><?= htmlspecialchars($asset['category_name'] ?? 'N/A') ?></td>
                                             <td><span class="badge bg-info"><?= htmlspecialchars($asset['status_name'] ?? 'N/A') ?></span></td>
                                             <td><?= htmlspecialchars($asset['dept_name'] ?? 'N/A') ?></td>
-                                            <td class="text-center">
+                                            <!-- ADDED "no-export" CLASS HERE -->
+                                            <td class="text-center no-export">
                                                 <a href="../assets/asset_details.php?id=<?= $asset['asset_id'] ?>" class="btn btn-sm btn-outline-primary">View</a>
                                             </td>
                                         </tr>
@@ -212,5 +282,46 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
         </div>
     </div>
 </div>
+
+<!-- =========================================================
+     PDF EXPORT SCRIPT
+     ========================================================= -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+<script>
+    function exportToPDF() {
+        const { jsPDF } = window.jspdf;
+        // Using landscape since tables with many columns fit better
+        const doc = new jsPDF('landscape');
+
+        doc.setFontSize(16);
+        doc.text("Assets in Model: <?= addslashes($model['model_name']) ?>", 14, 15);
+
+        // Temporarily hide the Action column
+        document.querySelectorAll('.no-export').forEach(function(el) {
+            el.style.display = 'none';
+        });
+
+        doc.autoTable({
+            html: '#assetsTable',
+            startY: 25,
+            styles: {
+                fontSize: 9,
+                cellPadding: 2
+            },
+            headStyles: {
+                fillColor: [52, 58, 64] // Matches standard dark header
+            }
+        });
+
+        // Restore the Action column in the HTML view
+        document.querySelectorAll('.no-export').forEach(function(el) {
+            el.style.display = '';
+        });
+
+        const safeFilename = "<?= addslashes($model['model_name']) ?>".replace(/[^a-zA-Z0-9_-]/g, "_");
+        doc.save("Model_Assets_" + safeFilename + "_<?= date('Y-m-d') ?>.pdf");
+    }
+</script>
 
 <?php include("../../includes/footer.php"); ?>
