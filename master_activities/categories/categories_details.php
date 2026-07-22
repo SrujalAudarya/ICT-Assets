@@ -32,14 +32,36 @@ if ($location != "") {
     $where .= " AND a.location_id = '" . mysqli_real_escape_string($conn, $location) . "'";
 }
 
-$assets_query = "SELECT a.*,u.name as user_name, s.status_name, l.dept_name, m.model_name
-                 FROM assets a
-                 LEFT JOIN asset_status s ON a.status_id = s.status_id
-                 LEFT JOIN locations l ON a.location_id = l.location_id
-                 LEFT JOIN asset_models m ON a.model_id = m.model_id
-                 LEFT JOIN asset_assignments asn ON a.asset_id = asn.asset_id
-                 LEFT JOIN users u ON asn.user_id = u.user_id
-                 $where ORDER BY a.asset_id DESC";
+$assets_query = "
+SELECT 
+    a.*,
+    u.name AS user_name,
+    s.status_name,
+    l.dept_name,
+    m.model_name
+FROM assets a
+
+LEFT JOIN asset_status s 
+    ON a.status_id = s.status_id
+
+LEFT JOIN locations l 
+    ON a.location_id = l.location_id
+
+LEFT JOIN asset_models m 
+    ON a.model_id = m.model_id
+
+/* ✅ ONLY CURRENT ASSIGNMENT */
+LEFT JOIN asset_assignments asn 
+    ON a.asset_id = asn.asset_id
+    AND asn.returned_date IS NULL
+
+LEFT JOIN users u 
+    ON asn.user_id = u.user_id
+
+$where
+
+ORDER BY a.asset_id DESC
+";
 
 /* ---------- EXPORT LOGIC ---------- */
 if (isset($_GET['export'])) {

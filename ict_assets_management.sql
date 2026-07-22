@@ -123,18 +123,6 @@ CREATE TABLE maintenance_records (
                                          ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
--- Documents
-CREATE TABLE documents (
-                           document_id INT AUTO_INCREMENT PRIMARY KEY,
-                           asset_id INT,
-                           file_name VARCHAR(255),
-                           file_path VARCHAR(255),
-                           uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-                           FOREIGN KEY (asset_id) REFERENCES assets(asset_id)
-                               ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
-
 -- ---------------------------------------------
 -- 4. MASTER DATA INSERTS
 -- ---------------------------------------------

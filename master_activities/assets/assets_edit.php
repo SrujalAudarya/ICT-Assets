@@ -11,35 +11,6 @@ if (!$id) {
 }
 
 /* =========================================================
-   HELPER: UPLOAD DOCUMENT
-========================================================= */
-function uploadDoc($conn, $asset_id, $file_input, $type) {
-    if (!empty($_FILES[$file_input]['name'])) {
-        $original_name = $_FILES[$file_input]['name'];
-        $file_ext = pathinfo($original_name, PATHINFO_EXTENSION);
-        $file_name = $type . "_" . $asset_id . "_" . time() . "." . $file_ext;
-
-        $upload_dir = "../../uploads/";
-        if (!is_dir($upload_dir)) {
-            mkdir($upload_dir, 0777, true);
-        }
-
-        $path = $upload_dir . $file_name;
-        $db_path = "uploads/" . $file_name;
-
-        if (move_uploaded_file($_FILES[$file_input]['tmp_name'], $path)) {
-            $stmt = mysqli_prepare($conn, "
-                INSERT INTO documents (asset_id, file_name, file_path, document_type) 
-                VALUES (?, ?, ?, ?)
-            ");
-            mysqli_stmt_bind_param($stmt, "isss", $asset_id, $original_name, $db_path, $type);
-            mysqli_stmt_execute($stmt);
-            mysqli_stmt_close($stmt);
-        }
-    }
-}
-
-/* =========================================================
    AJAX UPDATE
 ========================================================= */
 if (isset($_POST['update_ajax'])) {
@@ -54,12 +25,6 @@ if (isset($_POST['update_ajax'])) {
     $date            = mysqli_real_escape_string($conn, $_POST['purchase_date'] ?? '');
     $warranty_expiry = mysqli_real_escape_string($conn, $_POST['warranty_expiry'] ?? '');
     $cost            = mysqli_real_escape_string($conn, $_POST['cost'] ?? '');
-
-    // Assignment fields
-    $assign_now          = isset($_POST['assign_now']) ? 1 : 0;
-    $user_id             = mysqli_real_escape_string($conn, $_POST['user_id'] ?? '');
-    $assigned_date       = mysqli_real_escape_string($conn, $_POST['assigned_date'] ?? '');
-    $assignment_remarks  = mysqli_real_escape_string($conn, $_POST['assignment_remarks'] ?? '');
 
     if ($name == '' || $serial == '' || $category == '') {
         echo json_encode([
@@ -100,62 +65,6 @@ if (isset($_POST['update_ajax'])) {
             throw new Exception(mysqli_error($conn));
         }
 
-        /* ---------------- ASSIGNMENT HANDLING ---------------- */
-        if ($assign_now && !empty($user_id) && !empty($assigned_date)) {
-
-            // Get Assigned status
-            $assigned_status_res = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name='Assigned' LIMIT 1");
-            $assigned_status = mysqli_fetch_assoc($assigned_status_res);
-
-            if (!$assigned_status) {
-                throw new Exception("Assigned status not found in asset_status table.");
-            }
-
-            // Check active assignment
-            $existing_assignment_q = mysqli_query($conn, "
-                SELECT assignment_id
-                FROM asset_assignments
-                WHERE asset_id='$id' AND returned_date IS NULL
-                LIMIT 1
-            ");
-            $existing_assignment = mysqli_fetch_assoc($existing_assignment_q);
-
-            if ($existing_assignment) {
-                // Update active assignment
-                $assignment_id = $existing_assignment['assignment_id'];
-                $update_assign = "
-                    UPDATE asset_assignments
-                    SET user_id='$user_id',
-                        assigned_date='$assigned_date',
-                        remarks='$assignment_remarks'
-                    WHERE assignment_id='$assignment_id'
-                ";
-                if (!mysqli_query($conn, $update_assign)) {
-                    throw new Exception(mysqli_error($conn));
-                }
-            } else {
-                // Create new assignment
-                $insert_assign = "
-                    INSERT INTO asset_assignments (asset_id, user_id, assigned_date, remarks)
-                    VALUES ('$id', '$user_id', '$assigned_date', '$assignment_remarks')
-                ";
-                if (!mysqli_query($conn, $insert_assign)) {
-                    throw new Exception(mysqli_error($conn));
-                }
-            }
-
-            // Force status to Assigned
-            $assigned_status_id = $assigned_status['status_id'];
-            if (!mysqli_query($conn, "UPDATE assets SET status_id='$assigned_status_id' WHERE asset_id='$id'")) {
-                throw new Exception(mysqli_error($conn));
-            }
-        }
-
-        /* ---------------- DOCUMENT UPLOAD ---------------- */
-        uploadDoc($conn, $id, "sale_order", "SALE_ORDER");
-        uploadDoc($conn, $id, "invoice", "INVOICE");
-        uploadDoc($conn, $id, "warranty_doc", "WARRANTY");
-
         mysqli_commit($conn);
 
         echo json_encode([
@@ -187,30 +96,6 @@ if (!$data) {
     echo "<div class='container mt-4'><div class='alert alert-danger'>Asset not found.</div></div>";
     include("../../includes/footer.php");
     exit();
-}
-
-/* =========================================================
-   FETCH CURRENT ACTIVE ASSIGNMENT
-========================================================= */
-$current_assignment = null;
-$assign_q = mysqli_query($conn, "
-    SELECT aa.*, u.name AS user_name, u.role AS user_role
-    FROM asset_assignments aa
-    LEFT JOIN users u ON aa.user_id = u.user_id
-    WHERE aa.asset_id='$id' AND aa.returned_date IS NULL
-    LIMIT 1
-");
-if ($assign_q && mysqli_num_rows($assign_q) > 0) {
-    $current_assignment = mysqli_fetch_assoc($assign_q);
-}
-
-/* =========================================================
-   FETCH EXISTING DOC TYPES
-========================================================= */
-$docs_res = mysqli_query($conn, "SELECT document_type FROM documents WHERE asset_id='$id'");
-$existing_docs = [];
-while($d = mysqli_fetch_assoc($docs_res)) {
-    $existing_docs[] = $d['document_type'];
 }
 ?>
 
@@ -326,7 +211,6 @@ while($d = mysqli_fetch_assoc($docs_res)) {
                             }
                             ?>
                         </select>
-                        <small class="text-muted">If you assign this asset below, status will automatically become <b>Assigned</b>.</small>
                     </div>
 
                     <div class="col-md-4 mb-3">
@@ -350,99 +234,6 @@ while($d = mysqli_fetch_assoc($docs_res)) {
                     </div>
                 </div>
 
-                <!-- ASSIGNMENT SECTION -->
-                <h5 class="text-primary border-bottom pb-2 mt-4 mb-3">Assignment (Optional)</h5>
-
-                <?php if($current_assignment): ?>
-                    <div class="alert alert-info">
-                        <strong>Currently Assigned To:</strong>
-                        <?= htmlspecialchars($current_assignment['user_name']) ?>
-                        <?php if(!empty($current_assignment['user_role'])): ?>
-                            (<?= htmlspecialchars($current_assignment['user_role']) ?>)
-                        <?php endif; ?>
-                        <br>
-                        <small>
-                            Assigned on: <?= date('d M Y', strtotime($current_assignment['assigned_date'])) ?>
-                        </small>
-                    </div>
-                <?php endif; ?>
-
-                <div class="row">
-                    <div class="col-md-12 mb-3">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="assign_now" name="assign_now" value="1"
-                                   <?= $current_assignment ? 'checked' : '' ?>>
-                            <label class="form-check-label fw-bold" for="assign_now">
-                                Assign / Reassign this asset to a user
-                            </label>
-                        </div>
-                        <small class="text-muted">
-                            Enable this if you want to assign or reassign this asset now.
-                        </small>
-                    </div>
-
-                    <div class="col-md-4 mb-3 assign-fields">
-                        <label class="form-label">Select User</label>
-                        <select name="user_id" class="form-select">
-                            <option value="">-- Select Employee --</option>
-                            <?php
-                            $users = mysqli_query($conn, "SELECT user_id, name, role FROM users ORDER BY name ASC");
-                            while($u = mysqli_fetch_assoc($users)){
-                                $selected = ($current_assignment && $current_assignment['user_id'] == $u['user_id']) ? "selected" : "";
-                                echo "<option value='{$u['user_id']}' $selected>" . htmlspecialchars($u['name']) . " (" . htmlspecialchars($u['role']) . ")</option>";
-                            }
-                            ?>
-                        </select>
-                    </div>
-
-                    <div class="col-md-4 mb-3 assign-fields">
-                        <label class="form-label">Assignment Date</label>
-                        <input type="date" name="assigned_date" class="form-control"
-                               value="<?= $current_assignment ? htmlspecialchars($current_assignment['assigned_date']) : date('Y-m-d') ?>">
-                    </div>
-
-                    <div class="col-md-4 mb-3 assign-fields">
-                        <label class="form-label">Assignment Remarks</label>
-                        <input type="text" name="assignment_remarks" class="form-control"
-                               value="<?= htmlspecialchars($current_assignment['remarks'] ?? '') ?>"
-                               placeholder="Optional remarks">
-                    </div>
-                </div>
-
-                <!-- DOCUMENTS -->
-                <h5 class="text-primary border-bottom pb-2 mt-4 mb-3">Update Procurement Documents</h5>
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Sale Order</label>
-                        <input type="file" name="sale_order" class="form-control">
-                        <?php if(in_array('SALE_ORDER', $existing_docs)): ?>
-                            <small class="text-success">
-                                <i class="bi bi-check-circle"></i> Document already exists. Upload to add another copy.
-                            </small>
-                        <?php endif; ?>
-                    </div>
-
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Invoice</label>
-                        <input type="file" name="invoice" class="form-control">
-                        <?php if(in_array('INVOICE', $existing_docs)): ?>
-                            <small class="text-success">
-                                <i class="bi bi-check-circle"></i> Document already exists. Upload to add another copy.
-                            </small>
-                        <?php endif; ?>
-                    </div>
-
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Warranty Card</label>
-                        <input type="file" name="warranty_doc" class="form-control">
-                        <?php if(in_array('WARRANTY', $existing_docs)): ?>
-                            <small class="text-success">
-                                <i class="bi bi-check-circle"></i> Document already exists. Upload to add another copy.
-                            </small>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
                 <div class="mt-4 border-top pt-3">
                     <button type="submit" class="btn btn-warning btn-lg px-5">Update Asset</button>
                     <a href="assets_list.php" class="btn btn-secondary btn-lg px-5">Cancel</a>
@@ -453,23 +244,6 @@ while($d = mysqli_fetch_assoc($docs_res)) {
 </div>
 
 <script>
-/* Toggle assignment fields */
-document.addEventListener('DOMContentLoaded', function () {
-    const assignCheckbox = document.getElementById('assign_now');
-    const assignFields = document.querySelectorAll('.assign-fields');
-
-    function toggleAssignFields() {
-        assignFields.forEach(el => {
-            el.style.display = assignCheckbox.checked ? 'block' : 'none';
-        });
-    }
-
-    if (assignCheckbox) {
-        assignCheckbox.addEventListener('change', toggleAssignFields);
-        toggleAssignFields();
-    }
-});
-
 /* AJAX form submit with progress */
 document.getElementById('assetForm').onsubmit = function(e) {
     e.preventDefault();

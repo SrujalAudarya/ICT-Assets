@@ -25,12 +25,6 @@ function isActive($pages) {
         <a href="<?= ROUTE_ASSIGNMENTS ?>" class="nav-link <?= isActive(['assignments_list.php', 'assign_asset.php', 'assignment_details.php']) ?>">
             <i class="bi bi-person-check"></i> Assignments
         </a>
-        
-        
-        
-        <a href="<?= ROUTE_DOCUMENTS ?>" class="nav-link <?= isActive(['documents_list.php', 'documents_upload.php', 'document_details.php']) ?>">
-            <i class="bi bi-file-earmark-text"></i> Documents
-        </a>
 
         <div class="master-menu-header">Master Data</div>
         
@@ -40,7 +34,7 @@ function isActive($pages) {
         
         <a href="<?= ROUTE_VENDORS ?>" class="nav-link <?= isActive(['vendors_list.php', 'vendors_add.php', 'vendors_edit.php', 'vendors_details.php']) ?>">
             <i class="bi bi-shop"></i> Vendors
-        </a>
+        </a> 
         
         <a href="<?= ROUTE_CATEGORIES ?>" class="nav-link <?= isActive(['categories_list.php', 'categories_add.php', 'categories_edit.php', 'categories_details.php']) ?>">
             <i class="bi bi-tags"></i> Categories
@@ -57,7 +51,11 @@ function isActive($pages) {
         <a href="<?= ROUTE_STATUS ?>" class="nav-link <?= isActive(['status_list.php', 'status_add.php', 'status_edit.php', 'status_details.php']) ?>">
             <i class="bi bi-activity"></i> Status Definitions
         </a>
-    </div>
+        <a href="<?= ROUTE_PC_DETAILS ?>" 
+            class="nav-link <?= isActive(['pc_list.php','pc_add.php','pc_edit.php']) ?>">
+            <i class="bi bi-pc-display"></i> PC Details
+</a>
+</div>
 </div>
 
 <div class="main-content" id="main-content">

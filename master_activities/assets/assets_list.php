@@ -193,24 +193,18 @@ function getStatusId($conn, $hasAssignedUser = false)
 
 /* =========================================================
    IMPORT ASSETS FROM CSV
-   CSV format:
-   Assigned User Name,Category,Serial Number,Department,Vendor,Model Name,Asset Name,Purchase Date
    ========================================================= */
 if (isset($_POST['import_assets_excel'])) {
-
     if (!empty($_FILES['asset_excel_file']['name'])) {
-
         $fileExt = strtolower(pathinfo($_FILES['asset_excel_file']['name'], PATHINFO_EXTENSION));
 
         if ($fileExt !== 'csv') {
             $error = "Please upload only a CSV file.";
         } else {
-
             $fileName = $_FILES['asset_excel_file']['tmp_name'];
             $handle = fopen($fileName, "r");
 
             if ($handle !== false) {
-
                 $rowCount = 0;
                 $successCount = 0;
                 $failCount = 0;
@@ -219,26 +213,11 @@ if (isset($_POST['import_assets_excel'])) {
                 while (($line = fgets($handle)) !== false) {
                     $rowCount++;
 
-                    // Skip header
-                    if ($rowCount == 1) {
-                        continue;
-                    }
+                    if ($rowCount == 1) continue; // Skip header
 
                     $line = trim($line);
                     if ($line === '') continue;
-
                     $row = parseCsvLine($line);
-
-                    /*
-                      [0] Assigned User Name
-                      [1] Category
-                      [2] Serial Number
-                      [3] Department
-                      [4] Vendor
-                      [5] Model Name
-                      [6] Asset Name
-                      [7] Purchase Date
-                    */
 
                     $assignedUserName = trim($row[0] ?? '');
                     $categoryName     = trim($row[1] ?? '');
@@ -249,32 +228,20 @@ if (isset($_POST['import_assets_excel'])) {
                     $assetName        = trim($row[6] ?? '');
                     $purchaseDateRaw  = trim($row[7] ?? '');
 
-                    // Skip fully blank rows
-                    if (
-                        $assignedUserName === '' &&
-                        $categoryName === '' &&
-                        $serialNumber === '' &&
-                        $deptName === '' &&
-                        $vendorName === '' &&
-                        $modelName === '' &&
-                        $assetName === '' &&
-                        $purchaseDateRaw === ''
-                    ) {
+                    if ($assignedUserName === '' && $categoryName === '' && $serialNumber === '' &&
+                        $deptName === '' && $vendorName === '' && $modelName === '' &&
+                        $assetName === '' && $purchaseDateRaw === '') {
                         continue;
                     }
 
-                    // Required fields
                     if ($serialNumber === '' || $assetName === '') {
-                        die("Validation Failed<br>" .
-                            "Serial = [" . $serialNumber . "]<br>" .
-                            "Asset = [" . $assetName . "]");
+                        die("Validation Failed<br>Serial = [" . $serialNumber . "]<br>Asset = [" . $assetName . "]");
                     }
 
                     $assignedUserNameEsc = mysqli_real_escape_string($conn, $assignedUserName);
                     $serialNumberEsc     = mysqli_real_escape_string($conn, $serialNumber);
                     $assetNameEsc        = mysqli_real_escape_string($conn, $assetName);
 
-                    // Duplicate serial check
                     $dupRes = mysqli_query($conn, "SELECT asset_id FROM assets WHERE serial_number = '$serialNumberEsc' LIMIT 1");
                     if ($dupRes && mysqli_num_rows($dupRes) > 0) {
                         $failCount++;
@@ -282,41 +249,24 @@ if (isset($_POST['import_assets_excel'])) {
                         continue;
                     }
 
-                    // Foreign keys
                     $category_id = getCategoryId($conn, $categoryName);
                     $vendor_id   = getVendorId($conn, $vendorName);
                     $location_id = getLocationId($conn, $deptName);
                     $model_id    = getModelId($conn, $modelName, $category_id, $vendor_id);
                     $status_id   = getStatusId($conn, !empty($assignedUserName));
 
-                    // Purchase date
                     $parsedDate = parsePurchaseDate($purchaseDateRaw);
                     $purchaseDateSql = $parsedDate ? "'$parsedDate'" : "NULL";
 
-                    // INSERT INTO assets
                     $insertAsset = "
                         INSERT INTO assets (
-                            asset_name,
-                            model_id,
-                            serial_number,
-                            category_id,
-                            vendor_id,
-                            location_id,
-                            status_id,
-                            purchase_date,
-                            cost
+                            asset_name, model_id, serial_number, category_id, vendor_id, location_id, status_id, purchase_date, cost
                         ) VALUES (
-                            '$assetNameEsc',
-                            " . ($model_id ? $model_id : "NULL") . ",
-                            '$serialNumberEsc',
-                            " . ($category_id ? $category_id : "NULL") . ",
-                            " . ($vendor_id ? $vendor_id : "NULL") . ",
-                            " . ($location_id ? $location_id : "NULL") . ",
-                            " . ($status_id ? $status_id : "NULL") . ",
-                            $purchaseDateSql,
-                            0
-                        )
-                    ";
+                            '$assetNameEsc', " . ($model_id ? $model_id : "NULL") . ", '$serialNumberEsc',
+                            " . ($category_id ? $category_id : "NULL") . ", " . ($vendor_id ? $vendor_id : "NULL") . ",
+                            " . ($location_id ? $location_id : "NULL") . ", " . ($status_id ? $status_id : "NULL") . ",
+                            $purchaseDateSql, 0
+                        )";
 
                     if (!mysqli_query($conn, $insertAsset)) {
                         $failCount++;
@@ -326,29 +276,15 @@ if (isset($_POST['import_assets_excel'])) {
 
                     $asset_id = mysqli_insert_id($conn);
 
-                    // Insert assignment if user exists
                     if ($assignedUserName !== '') {
                         $userRes = mysqli_query($conn, "SELECT user_id FROM users WHERE name = '$assignedUserNameEsc' LIMIT 1");
 
                         if ($userRes && mysqli_num_rows($userRes) > 0) {
                             $userRow = mysqli_fetch_assoc($userRes);
                             $user_id = (int)$userRow['user_id'];
-
                             $assignQuery = "
-                                INSERT INTO asset_assignments (
-                                    asset_id,
-                                    user_id,
-                                    assigned_date,
-                                    returned_date,
-                                    remarks
-                                ) VALUES (
-                                    $asset_id,
-                                    $user_id,
-                                    CURDATE(),
-                                    NULL,
-                                    NULL
-                                )
-                            ";
+                                INSERT INTO asset_assignments (asset_id, user_id, assigned_date, returned_date, remarks) 
+                                VALUES ($asset_id, $user_id, CURDATE(), NULL, NULL)";
 
                             if (!mysqli_query($conn, $assignQuery)) {
                                 $failedRows[] = "Row $rowCount: Asset inserted but assignment failed - " . mysqli_error($conn);
@@ -357,12 +293,9 @@ if (isset($_POST['import_assets_excel'])) {
                             $failedRows[] = "Row $rowCount: Asset inserted but user not found for assignment ($assignedUserName)";
                         }
                     }
-
                     $successCount++;
                 }
-
                 fclose($handle);
-
                 $success_msg = "Import completed successfully. Assets Added: $successCount, Failed: $failCount";
 
                 if (!empty($failedRows)) {
@@ -376,9 +309,6 @@ if (isset($_POST['import_assets_excel'])) {
         $error = "Please select a CSV file.";
     }
 }
-
-include("../../includes/header.php");
-include("../../includes/sidebar.php");
 
 /* =========================================================
    FILTERS
@@ -395,34 +325,108 @@ if ($search != "") {
     $search_escaped = mysqli_real_escape_string($conn, $search);
     $where .= " AND (
         a.asset_name LIKE '%$search_escaped%' OR
-        a.serial_number LIKE '%$search_escaped%'
+        a.serial_number LIKE '%$search_escaped%' OR
+        u.name LIKE '%$search_escaped%'
     )";
 }
-
 if ($category != "") {
     $category = (int)$category;
     $where .= " AND a.category_id = $category";
 }
-
 if ($status != "") {
     $status = (int)$status;
     $where .= " AND a.status_id = $status";
 }
-
 if ($location != "") {
     $location = (int)$location;
     $where .= " AND a.location_id = $location";
 }
-
 if ($model != "") {
     $model = (int)$model;
     $where .= " AND a.model_id = $model";
 }
 
 /* =========================================================
-   PAGINATION
+   EXPORT LOGIC (Executes before any HTML output)
    ========================================================= */
-$limit = 10;
+if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel'])) {
+    
+    $isExcel = ($_GET['export'] === 'excel');
+    
+    $exportQuery = "
+        SELECT 
+            a.*,
+            c.category_name,
+            s.status_name,
+            l.dept_name,
+            m.model_name,
+            v.vendor_name,
+            u.name AS assigned_user_name
+        FROM assets a
+        LEFT JOIN asset_categories c ON a.category_id = c.category_id
+        LEFT JOIN asset_status s ON a.status_id = s.status_id
+        LEFT JOIN locations l ON a.location_id = l.location_id
+        LEFT JOIN asset_models m ON a.model_id = m.model_id
+        LEFT JOIN vendors v ON a.vendor_id = v.vendor_id
+        LEFT JOIN asset_assignments aa 
+            ON a.asset_id = aa.asset_id 
+           AND aa.returned_date IS NULL
+        LEFT JOIN users u ON aa.user_id = u.user_id
+        $where
+        ORDER BY a.asset_id ASC
+    ";
+    
+    $exportResult = mysqli_query($conn, $exportQuery);
+
+    if ($isExcel) {
+        // Output as Tab Separated Values (TSV) inside a .xls file - natively supported by Excel
+        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+        header('Content-Disposition: attachment; filename="Assets_Inventory_' . date('Y-m-d_H-i') . '.xls"');
+        $delimiter = "\t"; 
+    } else {
+        // Standard CSV Output
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="Assets_Inventory_' . date('Y-m-d_H-i') . '.csv"');
+        $delimiter = ",";
+    }
+    
+    $output = fopen('php://output', 'w');
+    
+    // Header row
+    fputcsv($output, ['Sr No', 'Asset Name', 'Serial No', 'Category', 'Model', 'Vendor', 'Status', 'Location', 'Assigned To', 'Purchase Date', 'Warranty Expiry Date'], $delimiter);
+    
+    $sr = 1;
+    while ($row = mysqli_fetch_assoc($exportResult)) {
+        
+        $purchaseDate = !empty($row['purchase_date']) ? date('d-m-Y', strtotime($row['purchase_date'])) : '-';
+        $warrantyExpiry = !empty($row['warranty_expiry']) ? date('d-m-Y', strtotime($row['warranty_expiry'])) : '-';
+
+        fputcsv($output, [
+            $sr++,
+            $row['asset_name'],
+            $row['serial_number'],
+            $row['category_name'] ?? 'N/A',
+            $row['model_name'] ?? 'N/A',
+            $row['vendor_name'] ?? 'N/A',
+            $row['status_name'] ?? 'N/A',
+            $row['dept_name'] ?? 'N/A',
+            $row['assigned_user_name'] ?? 'Not Assigned',
+            $purchaseDate,
+            $warrantyExpiry
+        ], $delimiter);
+    }
+    
+    fclose($output);
+    exit();
+}
+
+include("../../includes/header.php");
+include("../../includes/sidebar.php");
+
+/* =========================================================
+   PAGINATION (For HTML Display only)
+   ========================================================= */
+$limit = 15;
 $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $offset = ($page - 1) * $limit;
 
@@ -456,30 +460,60 @@ LIMIT $limit OFFSET $offset
 ";
 
 $result = mysqli_query($conn, $query);
+
+// Build current URL query string so the Export buttons remember applied filters
+$exportParams = $_GET;
+
+// Link for CSV
+$exportParams['export'] = 'csv';
+$exportCsvUrl = '?' . http_build_query($exportParams);
+
+// Link for Excel
+$exportParams['export'] = 'excel';
+$exportExcelUrl = '?' . http_build_query($exportParams);
 ?>
 
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Assets Inventory</h2>
 
-        <form method="post" enctype="multipart/form-data" class="d-flex gap-2">
+        <div class="d-flex gap-2">
+            <!-- EXPORT DROPDOWN -->
+            <div class="dropdown">
+                <button class="btn btn-secondary dropdown-toggle" type="button" id="exportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-download"></i> Export
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="exportDropdown">
+                    <li>
+                        <a class="dropdown-item" href="<?= $exportCsvUrl ?>">
+                            <i class="bi bi-filetype-csv"></i> Export as CSV
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="<?= $exportExcelUrl ?>">
+                            <i class="bi bi-file-earmark-excel"></i> Export as Excel
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
             <a href="assets_add.php" class="btn btn-primary">
                 <i class="bi bi-plus-circle"></i> Add New Asset
             </a>
 
-            <button type="button" class="btn btn-success" onclick="document.getElementById('assetExcelFile').click();">
-                <i class="bi bi-file-earmark-arrow-up"></i> Add From CSV
-            </button>
-
-            <input type="file"
-                name="asset_excel_file"
-                id="assetExcelFile"
-                accept=".csv"
-                style="display:none;"
-                onchange="document.getElementById('assetImportBtn').click();">
-
-            <button type="submit" name="import_assets_excel" id="assetImportBtn" style="display:none;">Import</button>
-        </form>
+            <form method="post" enctype="multipart/form-data" class="d-inline mb-0">
+                <button type="button" class="btn btn-success" onclick="document.getElementById('assetExcelFile').click();">
+                    <i class="bi bi-file-earmark-arrow-up"></i> Add From CSV
+                </button>
+                <input type="file"
+                    name="asset_excel_file"
+                    id="assetExcelFile"
+                    accept=".csv"
+                    style="display:none;"
+                    onchange="document.getElementById('assetImportBtn').click();">
+                <button type="submit" name="import_assets_excel" id="assetImportBtn" style="display:none;">Import</button>
+            </form>
+        </div>
     </div>
 
     <?php if (isset($error)): ?>
@@ -497,7 +531,7 @@ $result = mysqli_query($conn, $query);
                 <div class="col-md-3">
                     <label class="form-label">Search</label>
                     <input type="text" name="search" class="form-control"
-                        placeholder="Asset Name / Serial No"
+                        placeholder="Asset Name/ Serial No/ Assigned User"
                         value="<?= htmlspecialchars($search) ?>">
                 </div>
 
@@ -653,7 +687,20 @@ $result = mysqli_query($conn, $query);
 
     <!-- PAGINATION -->
     <?php
-    $countQuery = "SELECT COUNT(*) AS total FROM assets a $where";
+    $countQuery = "
+        SELECT COUNT(DISTINCT a.asset_id) AS total
+        FROM assets a
+        LEFT JOIN asset_categories c ON a.category_id = c.category_id
+        LEFT JOIN asset_status s ON a.status_id = s.status_id
+        LEFT JOIN locations l ON a.location_id = l.location_id
+        LEFT JOIN asset_models m ON a.model_id = m.model_id
+        LEFT JOIN vendors v ON a.vendor_id = v.vendor_id
+        LEFT JOIN asset_assignments aa 
+            ON a.asset_id = aa.asset_id 
+           AND aa.returned_date IS NULL
+        LEFT JOIN users u ON aa.user_id = u.user_id
+        $where
+    ";
     $countResult = mysqli_query($conn, $countQuery);
     $totalRows = 0;
     if ($countResult) {

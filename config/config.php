@@ -16,6 +16,12 @@ const ROUTE_VENDORS_ADD = MASTER_PATH . 'vendors/vendors_add.php';
 const ROUTE_VENDORS_EDIT = MASTER_PATH . 'vendors/vendors_edit.php';
 const ROUTE_VENDORS_DELETE = MASTER_PATH . 'vendors/vendors_delete.php';
 
+// PC Details
+const ROUTE_PC_DETAILS = MASTER_PATH . 'pc_details/pc_list.php';
+const ROUTE_PC_ADD = MASTER_PATH . 'pc_details/pc_add.php';
+const ROUTE_PC_EDIT = MASTER_PATH . 'pc_details/pc_edit.php';
+const ROUTE_PC_DELETE = MASTER_PATH . 'pc_details/pc_delete.php';
+
 // Categories
 const ROUTE_CATEGORIES = MASTER_PATH . 'categories/categories_list.php';
 const ROUTE_CATEGORIES_ADD = MASTER_PATH . 'categories/categories_add.php';
@@ -49,10 +55,6 @@ const ROUTE_ASSETS_DELETE = MASTER_PATH . 'assets/assets_delete.php';
 // Assignments
 const ROUTE_ASSIGNMENTS = MASTER_PATH . 'assignments/assignments_list.php';
 const ROUTE_ASSIGN_ASSET = MASTER_PATH . 'assignments/assign_asset.php';
-
-// Documents
-const ROUTE_DOCUMENTS = MASTER_PATH . 'documents/documents_list.php';
-const ROUTE_DOCUMENTS_UPLOAD = MASTER_PATH . 'documents/documents_upload.php';
 
 // Users
 const ROUTE_USERS = MASTER_PATH . 'users/users_list.php';

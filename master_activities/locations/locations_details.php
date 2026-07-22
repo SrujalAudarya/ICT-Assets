@@ -40,14 +40,34 @@ if($status != ""){
 
 /* ---------- ASSETS AT THIS LOCATION ---------- */
 $assets_query = "
-SELECT a.*, c.category_name, s.status_name, m.model_name, u.name
+SELECT 
+    a.*, 
+    c.category_name, 
+    s.status_name, 
+    m.model_name, 
+    u.name
 FROM assets a
-LEFT JOIN asset_categories c ON a.category_id = c.category_id
-LEFT JOIN asset_status s ON a.status_id = s.status_id
-LEFT JOIN asset_models m ON a.model_id = m.model_id
-LEFT JOIN asset_assignments asn ON a.asset_id = asn.asset_id
-LEFT JOIN users u ON asn.user_id = u.user_id
+
+LEFT JOIN asset_categories c 
+    ON a.category_id = c.category_id
+
+LEFT JOIN asset_status s 
+    ON a.status_id = s.status_id
+
+LEFT JOIN asset_models m 
+    ON a.model_id = m.model_id
+
+/* ✅ ONLY CURRENT ASSIGNMENT */
+LEFT JOIN asset_assignments asn 
+    ON a.asset_id = asn.asset_id 
+    AND asn.returned_date IS NULL
+
+LEFT JOIN users u 
+    ON asn.user_id = u.user_id
+
+/* ✅ FILTER BY LOCATION (DEPARTMENT) */
 $where
+
 ORDER BY a.asset_id DESC
 ";
 
