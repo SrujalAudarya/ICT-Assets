@@ -89,33 +89,6 @@ while ($row = mysqli_fetch_assoc($assignments_res)) {
 }
 
 /* =========================================================
-   DOCUMENTS BY TYPE
-   ========================================================= */
-$docs_res = mysqli_query($conn, "
-    SELECT * 
-    FROM documents 
-    WHERE asset_id = '$id' 
-    ORDER BY document_id DESC
-");
-
-$procurement_docs = [];
-$other_docs = [];
-
-while ($d = mysqli_fetch_assoc($docs_res)) {
-    if (in_array($d['document_type'], ['SALE_ORDER', 'INVOICE', 'WARRANTY'])) {
-        $procurement_docs[] = $d;
-    } else {
-        $other_docs[] = $d;
-    }
-}
-
-$type_labels = [
-    'SALE_ORDER' => 'Sale Order',
-    'INVOICE'    => 'Invoice',
-    'WARRANTY'   => 'Warranty Card'
-];
-
-/* =========================================================
    EXPORT LOGIC
    ========================================================= */
 if (isset($_GET['export'])) {
@@ -262,8 +235,8 @@ include("../../includes/sidebar.php");
         <div class="d-flex gap-2 flex-wrap">
             <?php if ($current_assignment): ?>
                 <a href="../assignments/return_asset.php?id=<?= $current_assignment['assignment_id'] ?>"
-                   class="btn btn-danger"
-                   onclick="return confirm('Mark this asset as returned?')">
+                    class="btn btn-danger"
+                    onclick="return confirm('Mark this asset as returned?')">
                     Return Asset
                 </a>
             <?php else: ?>
@@ -425,34 +398,6 @@ include("../../includes/sidebar.php");
                     <?php endif; ?>
                 </div>
             </div>
-
-            <!-- PROCUREMENT DOCUMENTS -->
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-dark text-white">
-                    <h5 class="mb-0">Procurement Documents</h5>
-                </div>
-                <div class="card-body p-0">
-                    <ul class="list-group list-group-flush">
-                        <?php if (empty($procurement_docs)): ?>
-                            <li class="list-group-item text-muted">No procurement documents found.</li>
-                        <?php else: ?>
-                            <?php foreach ($procurement_docs as $doc): ?>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <small class="text-muted d-block">
-                                            <?= htmlspecialchars($type_labels[$doc['document_type']] ?? $doc['document_type']) ?>
-                                        </small>
-                                        <?= htmlspecialchars($doc['file_name']) ?>
-                                    </div>
-                                    <a href="../../<?= htmlspecialchars($doc['file_path']) ?>" target="_blank" class="btn btn-sm btn-outline-primary">
-                                        View
-                                    </a>
-                                </li>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </ul>
-                </div>
-            </div>
         </div>
 
         <!-- RIGHT COLUMN -->
@@ -463,11 +408,6 @@ include("../../includes/sidebar.php");
                         <li class="nav-item">
                             <button class="nav-link active" id="assign-tab" data-bs-toggle="tab" data-bs-target="#assign" type="button">
                                 Assignment History
-                            </button>
-                        </li>
-                        <li class="nav-item">
-                            <button class="nav-link" id="docs-tab" data-bs-toggle="tab" data-bs-target="#docs" type="button">
-                                Other Documents
                             </button>
                         </li>
                     </ul>
@@ -519,33 +459,6 @@ include("../../includes/sidebar.php");
                                 </table>
                             </div>
                         </div>
-
-                        <!-- OTHER DOCUMENTS -->
-                        <div class="tab-pane fade" id="docs" role="tabpanel">
-                            <div class="list-group">
-                                <?php if (empty($other_docs)): ?>
-                                    <div class="text-center text-muted py-3">No additional documents uploaded.</div>
-                                <?php else: ?>
-                                    <?php foreach ($other_docs as $doc): ?>
-                                        <div class="list-group-item d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <h6 class="mb-0"><?= htmlspecialchars($doc['file_name']) ?></h6>
-                                                <small class="text-muted">
-                                                    Type: <?= htmlspecialchars($doc['document_type']) ?>
-                                                    <?php if (!empty($doc['uploaded_at'])): ?>
-                                                        | Uploaded on: <?= date('d M Y', strtotime($doc['uploaded_at'])) ?>
-                                                    <?php endif; ?>
-                                                </small>
-                                            </div>
-                                            <a href="../../<?= htmlspecialchars($doc['file_path']) ?>" target="_blank" class="btn btn-primary btn-sm">
-                                                Download
-                                            </a>
-                                        </div>
-                                    <?php endforeach; ?>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-
                     </div>
                 </div>
             </div>
@@ -555,86 +468,96 @@ include("../../includes/sidebar.php");
 
 <!-- PDF EXPORT -->
 <script>
-function exportToPDF() {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    function exportToPDF() {
+        const {
+            jsPDF
+        } = window.jspdf;
+        const doc = new jsPDF();
 
-    const assetName = "<?= addslashes($asset['asset_name']) ?>";
-    const serialNo = "<?= addslashes($asset['serial_number']) ?>";
+        const assetName = "<?= addslashes($asset['asset_name']) ?>";
+        const serialNo = "<?= addslashes($asset['serial_number']) ?>";
 
-    doc.setFontSize(18);
-    doc.setTextColor(0, 123, 255);
-    doc.text("Asset Comprehensive Profile", 14, 20);
+        doc.setFontSize(18);
+        doc.setTextColor(0, 123, 255);
+        doc.text("Asset Comprehensive Profile", 14, 20);
 
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text("Generated on: " + new Date().toLocaleString(), 14, 28);
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text("Generated on: " + new Date().toLocaleString(), 14, 28);
 
-    // Technical Specs
-    doc.setFontSize(14);
-    doc.setTextColor(0);
-    doc.text("Technical Specifications", 14, 40);
+        // Technical Specs
+        doc.setFontSize(14);
+        doc.setTextColor(0);
+        doc.text("Technical Specifications", 14, 40);
 
-    doc.autoTable({
-        startY: 45,
-        body: [
-            ["Asset Name", assetName],
-            ["Serial Number", serialNo],
-            ["Category", "<?= addslashes($asset['category_name'] ?? 'N/A') ?>"],
-            ["Model", "<?= addslashes($asset['model_name'] ?? 'N/A') ?>"],
-            ["Current Status", "<?= addslashes($asset['status_name'] ?? 'N/A') ?>"],
-            ["Department", "<?= addslashes($asset['dept_name'] ?? 'N/A') ?>"],
-            ["Vendor", "<?= addslashes($asset['vendor_name'] ?? 'N/A') ?>"]
-        ],
-        theme: 'grid',
-        styles: { fontSize: 10 }
-    });
+        doc.autoTable({
+            startY: 45,
+            body: [
+                ["Asset Name", assetName],
+                ["Serial Number", serialNo],
+                ["Category", "<?= addslashes($asset['category_name'] ?? 'N/A') ?>"],
+                ["Model", "<?= addslashes($asset['model_name'] ?? 'N/A') ?>"],
+                ["Current Status", "<?= addslashes($asset['status_name'] ?? 'N/A') ?>"],
+                ["Department", "<?= addslashes($asset['dept_name'] ?? 'N/A') ?>"],
+                ["Vendor", "<?= addslashes($asset['vendor_name'] ?? 'N/A') ?>"]
+            ],
+            theme: 'grid',
+            styles: {
+                fontSize: 10
+            }
+        });
 
-    // Lifecycle
-    doc.text("Lifecycle & Cost", 14, doc.lastAutoTable.finalY + 15);
-    doc.autoTable({
-        startY: doc.lastAutoTable.finalY + 20,
-        body: [
-            ["Purchase Date", "<?= (!empty($asset['purchase_date']) && $asset['purchase_date'] != '0000-00-00') ? $asset['purchase_date'] : 'N/A' ?>"],
-            ["Warranty Expiry", "<?= (!empty($asset['warranty_expiry']) && $asset['warranty_expiry'] != '0000-00-00') ? $asset['warranty_expiry'] : 'N/A' ?>"],
-            ["Initial Cost", "INR <?= number_format((float)$asset['cost'], 2) ?>"],
-            ["Asset Age", "<?= addslashes($age_str) ?>"],
-            ["Warranty Status", "<?= addslashes($warranty_status) ?>"]
-        ],
-        theme: 'grid',
-        styles: { fontSize: 10 }
-    });
+        // Lifecycle
+        doc.text("Lifecycle & Cost", 14, doc.lastAutoTable.finalY + 15);
+        doc.autoTable({
+            startY: doc.lastAutoTable.finalY + 20,
+            body: [
+                ["Purchase Date", "<?= (!empty($asset['purchase_date']) && $asset['purchase_date'] != '0000-00-00') ? $asset['purchase_date'] : 'N/A' ?>"],
+                ["Warranty Expiry", "<?= (!empty($asset['warranty_expiry']) && $asset['warranty_expiry'] != '0000-00-00') ? $asset['warranty_expiry'] : 'N/A' ?>"],
+                ["Initial Cost", "INR <?= number_format((float)$asset['cost'], 2) ?>"],
+                ["Asset Age", "<?= addslashes($age_str) ?>"],
+                ["Warranty Status", "<?= addslashes($warranty_status) ?>"]
+            ],
+            theme: 'grid',
+            styles: {
+                fontSize: 10
+            }
+        });
 
-    // Current Assignment
-    doc.text("Current Assignment", 14, doc.lastAutoTable.finalY + 15);
-    doc.autoTable({
-        startY: doc.lastAutoTable.finalY + 20,
-        body: [
-            <?php if ($current_assignment): ?>
-            ["Assigned To", "<?= addslashes($current_assignment['name']) ?>"],
-            ["Assigned Date", "<?= addslashes($current_assignment['assigned_date']) ?>"],
-            ["Role", "<?= addslashes($current_assignment['role']) ?>"],
-            ["Remarks", "<?= addslashes($current_assignment['remarks'] ?: '-') ?>"]
-            <?php else: ?>
-            ["Status", "Currently not assigned"]
-            <?php endif; ?>
-        ],
-        theme: 'grid',
-        styles: { fontSize: 10 }
-    });
+        // Current Assignment
+        doc.text("Current Assignment", 14, doc.lastAutoTable.finalY + 15);
+        doc.autoTable({
+            startY: doc.lastAutoTable.finalY + 20,
+            body: [
+                <?php if ($current_assignment): ?>["Assigned To", "<?= addslashes($current_assignment['name']) ?>"],
+                    ["Assigned Date", "<?= addslashes($current_assignment['assigned_date']) ?>"],
+                    ["Role", "<?= addslashes($current_assignment['role']) ?>"],
+                    ["Remarks", "<?= addslashes($current_assignment['remarks'] ?: '-') ?>"]
+                <?php else: ?>["Status", "Currently not assigned"]
+                <?php endif; ?>
+            ],
+            theme: 'grid',
+            styles: {
+                fontSize: 10
+            }
+        });
 
-    // Assignment History
-    doc.text("Assignment History", 14, doc.lastAutoTable.finalY + 15);
-    doc.autoTable({
-        html: '#assignTable',
-        startY: doc.lastAutoTable.finalY + 20,
-        theme: 'striped',
-        headStyles: { fillColor: [100, 100, 100] },
-        styles: { fontSize: 9 }
-    });
+        // Assignment History
+        doc.text("Assignment History", 14, doc.lastAutoTable.finalY + 15);
+        doc.autoTable({
+            html: '#assignTable',
+            startY: doc.lastAutoTable.finalY + 20,
+            theme: 'striped',
+            headStyles: {
+                fillColor: [100, 100, 100]
+            },
+            styles: {
+                fontSize: 9
+            }
+        });
 
-    doc.save("Asset_Profile_" + assetName.replace(/\s+/g, '_') + ".pdf");
-}
+        doc.save("Asset_Profile_" + assetName.replace(/\s+/g, '_') + ".pdf");
+    }
 </script>
 
 <?php include("../../includes/footer.php"); ?>

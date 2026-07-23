@@ -8,17 +8,16 @@ if(isset($_POST['save'])) {
     $email = mysqli_real_escape_string($conn, $_POST['email']);
     $phone = mysqli_real_escape_string($conn, $_POST['phone']);
     $role = mysqli_real_escape_string($conn, $_POST['role']);
+    $status = mysqli_real_escape_string($conn, $_POST['status']);
     $password = $_POST['password'];
 
-    // Basic validation
     if (($role === 'Admin' || $role === 'ICT Staff') && empty($password)) {
         $error = "Password is required for Admin and ICT Staff roles.";
     } else {
-        // Hash password if provided
         $hashed_password = !empty($password) ? password_hash($password, PASSWORD_DEFAULT) : null;
 
-        $query = "INSERT INTO users (name, email, phone, role, password) 
-                  VALUES ('$name', '$email', '$phone', '$role', " . 
+        $query = "INSERT INTO users (name, email, phone, role, status, password) 
+                  VALUES ('$name', '$email', '$phone', '$role', '$status', " . 
                   ($hashed_password ? "'$hashed_password'" : "NULL") . ")";
         
         if(mysqli_query($conn, $query)) {
@@ -40,43 +39,47 @@ include("../../includes/sidebar.php");
             <h4 class="mb-0">Add New User / Employee</h4>
         </div>
         <div class="card-body">
-            <?php if(isset($error)): ?>
-                <div class="alert alert-danger"><?= $error ?></div>
-            <?php endif; ?>
+            <?php if(isset($error)): ?><div class="alert alert-danger"><?= $error ?></div><?php endif; ?>
 
             <form method="post">
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Full Name</label>
-                        <input type="text" name="name" class="form-control text-uppercase" placeholder="e.g. John Doe" required>
+                        <input type="text" name="name" class="form-control text-uppercase" required>
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Email Address</label>
-                        <input type="email" name="email" class="form-control" placeholder="e.g. john@company.com">
+                        <input type="email" name="email" class="form-control">
                     </div>
                 </div>
 
                 <div class="row">
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
                         <label class="form-label">Phone Number</label>
-                        <input type="text" name="phone" class="form-control" placeholder="e.g. +91 1234567890">
+                        <input type="text" name="phone" class="form-control">
                     </div>
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
                         <label class="form-label">System Role</label>
                         <select name="role" id="roleSelect" class="form-select" onchange="togglePassword()" required>
-                            <option value="Employee">Employee - Asset Holder</option>
-                            <option value="Admin">Admin - System Access</option>
+                            <option value="Employee">Employee</option>
+                            <option value="Admin">Admin</option>
                             <option value="ICT Staff">ICT Staff</option>
                             <option value="Server">Server</option>
                             <option value="DRC Room">DRC Room</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">User Status</label>
+                        <select name="status" class="form-select" required>
+                            <option value="Active" selected>Active</option>
+                            <option value="Inactive">Inactive</option>
                         </select>
                     </div>
                 </div>
 
                 <div id="passwordField" style="display:none;" class="mb-3">
                     <label class="form-label">System Password</label>
-                    <input type="password" name="password" id="passwordInput" class="form-control" placeholder="Enter secure password">
-                    <small class="text-muted">Required for Admin and ICT Staff roles.</small>
+                    <input type="password" name="password" id="passwordInput" class="form-control">
                 </div>
 
                 <div class="mt-4">
@@ -87,7 +90,6 @@ include("../../includes/sidebar.php");
         </div>
     </div>
 </div>
-
 <script>
 function togglePassword() {
     var role = document.getElementById("roleSelect").value;
@@ -103,7 +105,5 @@ function togglePassword() {
         passwordInput.value = "";
     }
 }
-document.addEventListener('DOMContentLoaded', togglePassword);
 </script>
-
 <?php include("../../includes/footer.php"); ?>

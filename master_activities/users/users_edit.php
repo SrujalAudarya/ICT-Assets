@@ -5,7 +5,6 @@ include("../../config/db.php");
 
 $id = mysqli_real_escape_string($conn, $_GET['id']);
 
-// Fetch existing user data
 $result = mysqli_query($conn, "SELECT * FROM users WHERE user_id=$id");
 $data = mysqli_fetch_assoc($result);
 
@@ -20,28 +19,57 @@ if(isset($_POST['update'])) {
     $email = mysqli_real_escape_string($conn, $_POST['email']);
     $phone = mysqli_real_escape_string($conn, $_POST['phone']);
     $role = mysqli_real_escape_string($conn, $_POST['role']);
+    $status = mysqli_real_escape_string($conn, $_POST['status']);
     $password = $_POST['password'];
 
-    // Basic validation
-    if (($role === 'Admin' || $role === 'ICT Staff' || $role === 'Employees') && empty($data['password']) && empty($password)) {
-        $error = "Password is required for Admin and ICT Staff roles.";
+    if (($role === 'Admin' || $role === 'ICT Staff' || $role === 'DRC Room') && empty($data['password']) && empty($password)) {
+        $error = "Password is required for this role.";
     } else {
-        // Update query construction
-        $update_fields = "name='$name', email='$email', phone='$phone', role='$role'";
-        
-        // Update password only if provided
-        if (!empty($password)) {
-            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-            $update_fields .= ", password='$hashed_password'";
-        }
-        
-        $query = "UPDATE users SET $update_fields WHERE user_id=$id";
-        
-        if(mysqli_query($conn, $query)) {
-            header("Location: users_list.php");
+        mysqli_begin_transaction($conn);
+        try {
+            // If user is being changed from Active to Inactive, auto-return assets
+            if ($data['status'] == 'Active' && $status == 'Inactive') {
+                
+                // 1. Get the dynamic status_id for 'Available'
+                $status_res = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name = 'Available' LIMIT 1");
+                $available_status_id = null;
+                if ($status_res && mysqli_num_rows($status_res) > 0) {
+                    $status_row = mysqli_fetch_assoc($status_res);
+                    $available_status_id = $status_row['status_id'];
+                }
+
+                if ($available_status_id) {
+                    $assignments = mysqli_query($conn, "SELECT asset_id FROM asset_assignments WHERE user_id = '$id' AND returned_date IS NULL");
+                    
+                    $asset_ids = [];
+                    while ($row = mysqli_fetch_assoc($assignments)) {
+                        $asset_ids[] = $row['asset_id'];
+                    }
+
+                    if (!empty($asset_ids)) {
+                        $ids_str = implode(',', $asset_ids);
+                        // Update assets to Available
+                        mysqli_query($conn, "UPDATE assets SET status_id = '$available_status_id' WHERE asset_id IN ($ids_str)");
+                        // Mark as returned in assignment history
+                        mysqli_query($conn, "UPDATE asset_assignments SET returned_date = CURDATE(), remarks = CONCAT(IFNULL(remarks, ''), ' [Auto-returned: User made Inactive]') WHERE user_id = '$id' AND returned_date IS NULL");
+                    }
+                }
+            }
+
+            $update_fields = "name='$name', email='$email', phone='$phone', role='$role', status='$status'";
+            if (!empty($password)) {
+                $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+                $update_fields .= ", password='$hashed_password'";
+            }
+            
+            mysqli_query($conn, "UPDATE users SET $update_fields WHERE user_id=$id");
+            mysqli_commit($conn);
+            
+            header("Location: users_list.php?msg=status_updated");
             exit();
-        } else {
-            $error = "Error: " . mysqli_error($conn);
+        } catch (Exception $e) {
+            mysqli_rollback($conn);
+            $error = "Error: " . $e->getMessage();
         }
     }
 }
@@ -56,9 +84,7 @@ include("../../includes/sidebar.php");
             <h4 class="mb-0">Edit User / Employee</h4>
         </div>
         <div class="card-body">
-            <?php if(isset($error)): ?>
-                <div class="alert alert-danger"><?= $error ?></div>
-            <?php endif; ?>
+            <?php if(isset($error)): ?><div class="alert alert-danger"><?= $error ?></div><?php endif; ?>
 
             <form method="post">
                 <div class="row">
@@ -73,26 +99,33 @@ include("../../includes/sidebar.php");
                 </div>
 
                 <div class="row">
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
                         <label class="form-label">Phone Number</label>
                         <input type="text" name="phone" value="<?= htmlspecialchars($data['phone']) ?>" class="form-control">
                     </div>
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
                         <label class="form-label">System Role</label>
                         <select name="role" id="roleSelect" class="form-select" onchange="togglePassword()" required>
-                            <option value="Employee" <?= ($data['role'] == 'Employee') ? 'selected' : '' ?>>Employee (Asset Holder)</option>
-                            <option value="Admin" <?= ($data['role'] == 'Admin') ? 'selected' : '' ?>>Admin (System Access)</option>
+                            <option value="Employee" <?= ($data['role'] == 'Employee') ? 'selected' : '' ?>>Employee</option>
+                            <option value="Admin" <?= ($data['role'] == 'Admin') ? 'selected' : '' ?>>Admin</option>
                             <option value="ICT Staff" <?= ($data['role'] == 'ICT Staff') ? 'selected' : '' ?>>ICT Staff</option>
                             <option value="Server" <?= ($data['role'] == 'Server') ? 'selected' : '' ?>>Server</option>
                             <option value="DRC Room" <?= ($data['role'] == 'DRC Room') ? 'selected' : '' ?>>DRC Room</option>
                         </select>
                     </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">User Status</label>
+                        <select name="status" class="form-select" required>
+                            <option value="Active" <?= ($data['status'] == 'Active') ? 'selected' : '' ?>>Active</option>
+                            <option value="Inactive" <?= ($data['status'] == 'Inactive') ? 'selected' : '' ?>>Inactive</option>
+                        </select>
+                        <small class="text-muted">Setting to Inactive will auto-return assigned assets.</small>
+                    </div>
                 </div>
 
-                <div id="passwordField" style="<?= ($data['role'] == 'Admin' || $data['role'] == 'ICT Staff' || $data['role'] == 'DRC Room') ? 'display:block;' : 'display:none;' ?>" class="mb-3">
+                <div id="passwordField" style="<?= in_array($data['role'], ['Admin', 'ICT Staff', 'DRC Room']) ? 'display:block;' : 'display:none;' ?>" class="mb-3">
                     <label class="form-label">System Password</label>
                     <input type="password" name="password" id="passwordInput" class="form-control" placeholder="Leave blank to keep current password">
-                    <small class="text-muted">Required for Admin and ICT Staff roles if not already set.</small>
                 </div>
 
                 <div class="mt-4">
@@ -103,21 +136,16 @@ include("../../includes/sidebar.php");
         </div>
     </div>
 </div>
-
 <script>
 function togglePassword() {
     var role = document.getElementById("roleSelect").value;
     var passwordField = document.getElementById("passwordField");
-    
-    if (role === "Admin" || role === "ICT Staff") {
+    if (role === "Admin" || role === "ICT Staff" || role === "DRC Room") {
         passwordField.style.display = "block";
     } else {
         passwordField.style.display = "none";
         document.getElementById("passwordInput").value = "";
     }
 }
-// Run on load to set initial state
-document.addEventListener('DOMContentLoaded', togglePassword);
 </script>
-
 <?php include("../../includes/footer.php"); ?>
