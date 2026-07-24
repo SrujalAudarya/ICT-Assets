@@ -3,21 +3,27 @@ global $conn;
 include("../../includes/auth.php");
 include("../../config/db.php");
 
+// Fetch locations for the dropdown
+$locations_query = "SELECT location_id, dept_name, floor FROM locations ORDER BY dept_name ASC";
+$locations_result = mysqli_query($conn, $locations_query);
+
 if(isset($_POST['save'])) {
     $name = mysqli_real_escape_string($conn, $_POST['name']);
     $email = mysqli_real_escape_string($conn, $_POST['email']);
     $phone = mysqli_real_escape_string($conn, $_POST['phone']);
     $role = mysqli_real_escape_string($conn, $_POST['role']);
     $status = mysqli_real_escape_string($conn, $_POST['status']);
+    $location_id = mysqli_real_escape_string($conn, $_POST['location_id']);
     $password = $_POST['password'];
 
     if (($role === 'Admin' || $role === 'ICT Staff') && empty($password)) {
         $error = "Password is required for Admin and ICT Staff roles.";
     } else {
         $hashed_password = !empty($password) ? password_hash($password, PASSWORD_DEFAULT) : null;
+        $location_val = !empty($location_id) ? "'$location_id'" : "NULL";
 
-        $query = "INSERT INTO users (name, email, phone, role, status, password) 
-                  VALUES ('$name', '$email', '$phone', '$role', '$status', " . 
+        $query = "INSERT INTO users (name, email, phone, location_id, role, status, password) 
+                  VALUES ('$name', '$email', '$phone', $location_val, '$role', '$status', " . 
                   ($hashed_password ? "'$hashed_password'" : "NULL") . ")";
         
         if(mysqli_query($conn, $query)) {
@@ -58,6 +64,19 @@ include("../../includes/sidebar.php");
                         <label class="form-label">Phone Number</label>
                         <input type="text" name="phone" class="form-control">
                     </div>
+                    
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Department / Location</label>
+                        <select name="location_id" class="form-select" required>
+                            <option value="">-- Select Department --</option>
+                            <?php while($loc = mysqli_fetch_assoc($locations_result)): ?>
+                                <option value="<?= $loc['location_id'] ?>">
+                                    <?= htmlspecialchars($loc['dept_name']) ?> <?= !empty($loc['floor']) ? " (" . htmlspecialchars($loc['floor']) . ")" : "" ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+
                     <div class="col-md-4 mb-3">
                         <label class="form-label">System Role</label>
                         <select name="role" id="roleSelect" class="form-select" onchange="togglePassword()" required>
@@ -68,6 +87,9 @@ include("../../includes/sidebar.php");
                             <option value="DRC Room">DRC Room</option>
                         </select>
                     </div>
+                </div>
+
+                <div class="row">
                     <div class="col-md-4 mb-3">
                         <label class="form-label">User Status</label>
                         <select name="status" class="form-select" required>

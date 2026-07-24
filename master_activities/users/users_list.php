@@ -11,16 +11,13 @@ if (isset($_POST['import_excel'])) {
         $fileExt = strtolower(pathinfo($_FILES['excel_file']['name'], PATHINFO_EXTENSION));
 
         if ($fileExt !== 'csv') {
-            $error = "Please upload only a CSV file. Excel (.xlsx) file will not work directly.";
+            $error = "Please upload only a CSV file.";
         } else {
             $fileName = $_FILES['excel_file']['tmp_name'];
             $handle = fopen($fileName, "r");
 
             if ($handle !== false) {
-                $rowCount = 0;
-                $successCount = 0;
-                $failCount = 0;
-                $failedRows = [];
+                $rowCount = 0; $successCount = 0; $failCount = 0; $failedRows = [];
 
                 while (($row = fgetcsv($handle, 1000, ",")) !== false) {
                     $rowCount++;
@@ -31,7 +28,6 @@ if (isset($_POST['import_excel'])) {
                     $role  = mysqli_real_escape_string($conn, trim($row[2] ?? ''));
 
                     if (empty($name) && empty($phone) && empty($role)) continue;
-
                     if (empty($name)) { $failCount++; $failedRows[] = "Row $rowCount: Name is missing"; continue; }
                     if (empty($role)) { $failCount++; $failedRows[] = "Row $rowCount: Role is missing"; continue; }
 
@@ -42,16 +38,11 @@ if (isset($_POST['import_excel'])) {
 
                     $phoneValue = ($phone === '') ? "NULL" : "'" . $phone . "'";
 
-                    // Insert with default Active status
                     $query = "INSERT INTO users (name, email, phone, role, password, status)
                               VALUES ('$name', NULL, $phoneValue, '$role', NULL, 'Active')";
 
-                    if (mysqli_query($conn, $query)) {
-                        $successCount++;
-                    } else {
-                        $failCount++;
-                        $failedRows[] = "Row $rowCount: " . mysqli_error($conn);
-                    }
+                    if (mysqli_query($conn, $query)) { $successCount++; } 
+                    else { $failCount++; $failedRows[] = "Row $rowCount: " . mysqli_error($conn); }
                 }
                 fclose($handle);
                 $success_msg = "Import completed successfully. Added: $successCount, Failed: $failCount";
@@ -71,8 +62,8 @@ include("../../includes/sidebar.php");
 /* ---------- FILTER HANDLING ---------- */
 $search = trim($_GET['search'] ?? '');
 $role = $_GET['role'] ?? '';
-$status_filter = $_GET['status_filter'] ?? 'Active'; // Default to showing Active users
-$asset_filter = $_GET['asset_filter'] ?? ''; // New Asset Filter
+$status_filter = $_GET['status_filter'] ?? 'Active';
+$asset_filter = $_GET['asset_filter'] ?? '';
 
 $where = "WHERE 1=1";
 
@@ -89,32 +80,30 @@ if ($status_filter != "") {
     $where .= " AND u.status = '$status_escaped'";
 }
 if ($asset_filter == 'multiple') {
-    // Filter to only show users who have MORE THAN 1 active asset assigned
     $where .= " AND (SELECT COUNT(*) FROM asset_assignments WHERE user_id = u.user_id AND returned_date IS NULL) > 1";
 }
 
 /* ---------- PAGINATION LOGIC ---------- */
-$limit = 15;
+$limit = 10;
 $page = max(1, (int)($_GET['page'] ?? 1));
 $offset = ($page - 1) * $limit;
 
-// 1. Get total records matching the filter to calculate total pages
 $count_query = "SELECT COUNT(*) AS total FROM users u $where";
 $count_result = mysqli_query($conn, $count_query);
-$count_row = mysqli_fetch_assoc($count_result);
-$total_records = $count_row['total'];
+$total_records = mysqli_fetch_assoc($count_result)['total'];
 $total_pages = ceil($total_records / $limit);
 
-// 2. Build the query string for pagination links (keeps your search/filters active when changing pages)
 $query_params = $_GET;
-unset($query_params['page']); // Remove page from current URL parameters
+unset($query_params['page']);
 $query_string = http_build_query($query_params);
 $query_string = $query_string ? '&' . $query_string : '';
 
 /* ---------- MAIN QUERY ---------- */
-$query = "SELECT u.*, 
+$query = "SELECT u.*, l.dept_name,
           (SELECT COUNT(*) FROM asset_assignments WHERE user_id = u.user_id AND returned_date IS NULL) AS active_assets
-          FROM users u $where ORDER BY u.user_id ASC LIMIT $limit OFFSET $offset";
+          FROM users u 
+          LEFT JOIN locations l ON u.location_id = l.location_id
+          $where ORDER BY u.user_id ASC LIMIT $limit OFFSET $offset";
 
 $result = mysqli_query($conn, $query);
 ?>
@@ -135,7 +124,6 @@ $result = mysqli_query($conn, $query);
     <?php if (isset($error)): ?><div class="alert alert-danger"><?= $error ?></div><?php endif; ?>
     <?php if (isset($success_msg)): ?><div class="alert alert-success"><?= $success_msg ?></div><?php endif; ?>
     
-    <!-- Status Messages -->
     <?php if (isset($_GET['msg'])): ?>
         <?php if ($_GET['msg'] == 'status_updated'): ?>
             <div class="alert alert-success">User status updated successfully! Assets auto-returned if deactivated.</div>
@@ -146,7 +134,6 @@ $result = mysqli_query($conn, $query);
         <?php endif; ?>
     <?php endif; ?>
 
-    <!-- SEARCH & FILTER FORM -->
     <div class="card mb-4 shadow-sm">
         <div class="card-body">
             <form method="GET" class="row g-2">
@@ -188,7 +175,6 @@ $result = mysqli_query($conn, $query);
         </div>
     </div>
 
-    <!-- USERS TABLE -->
     <div class="card shadow-sm mb-4">
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -198,6 +184,8 @@ $result = mysqli_query($conn, $query);
                             <th>ID</th>
                             <th>Name</th>
                             <th>Email</th>
+                            <th>Phone</th>
+                            <th>Department</th>
                             <th>Role</th>
                             <th>Status</th>
                             <th class="text-center">Active Assets</th>
@@ -215,6 +203,8 @@ $result = mysqli_query($conn, $query);
                                         </a>
                                     </td>
                                     <td><?= !empty($row['email']) ? htmlspecialchars($row['email']) : '-' ?></td>
+                                    <td><?= !empty($row['phone']) ? htmlspecialchars($row['phone']) : '-' ?></td>
+                                    <td><?= !empty($row['dept_name']) ? htmlspecialchars($row['dept_name']) : '<span class="text-muted">Not Set</span>' ?></td>
                                     <td>
                                         <?php
                                         $role_class = 'bg-secondary';
@@ -244,7 +234,7 @@ $result = mysqli_query($conn, $query);
                                 </tr>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <tr><td colspan="7" class="text-center py-4 text-muted">No users found.</td></tr>
+                            <tr><td colspan="9" class="text-center py-4 text-muted">No users found.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -252,23 +242,17 @@ $result = mysqli_query($conn, $query);
         </div>
     </div>
     
-    <!-- PAGINATION CONTROLS -->
     <?php if ($total_pages > 1): ?>
         <nav aria-label="Page navigation" class="mt-4 pb-4">
             <ul class="pagination justify-content-center">
-                <!-- Previous Button -->
                 <li class="page-item <?= ($page <= 1) ? 'disabled' : '' ?>">
                     <a class="page-link" href="?page=<?= max(1, $page - 1) ?><?= $query_string ?>">Previous</a>
                 </li>
-                
-                <!-- Page Numbers -->
                 <?php for ($i = 1; $i <= $total_pages; $i++): ?>
                     <li class="page-item <?= ($page == $i) ? 'active' : '' ?>">
                         <a class="page-link" href="?page=<?= $i ?><?= $query_string ?>"><?= $i ?></a>
                     </li>
                 <?php endfor; ?>
-                
-                <!-- Next Button -->
                 <li class="page-item <?= ($page >= $total_pages) ? 'disabled' : '' ?>">
                     <a class="page-link" href="?page=<?= min($total_pages, $page + 1) ?><?= $query_string ?>">Next</a>
                 </li>

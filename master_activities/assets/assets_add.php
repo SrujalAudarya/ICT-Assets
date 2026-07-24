@@ -4,9 +4,39 @@ include("../../includes/auth.php");
 include("../../config/db.php");
 
 /* =========================================================
+   AJAX HANDLER: FETCH MODEL DETAILS FOR AUTO-FILL
+   ========================================================= */
+if (isset($_GET['action']) && $_GET['action'] == 'get_model_details') {
+    header('Content-Type: application/json');
+    $mod_id = (int)$_GET['model_id'];
+
+    // Attempt to get the latest asset data matching this model to pre-fill the form
+    $query = "SELECT vendor_id, purchase_date, warranty_expiry, cost 
+              FROM assets 
+              WHERE model_id = $mod_id 
+              ORDER BY asset_id DESC LIMIT 1";
+    $res = mysqli_query($conn, $query);
+
+    if ($res && $row = mysqli_fetch_assoc($res)) {
+        echo json_encode($row);
+    } else {
+        // Fallback: Check if the asset_models table has a default vendor_id
+        $fallback_query = "SELECT vendor_id FROM asset_models WHERE model_id = $mod_id LIMIT 1";
+        $fallback_res = mysqli_query($conn, $fallback_query);
+        if ($fallback_res && $fallback_row = mysqli_fetch_assoc($fallback_res)) {
+            echo json_encode(['vendor_id' => $fallback_row['vendor_id'], 'purchase_date' => '', 'warranty_expiry' => '', 'cost' => '']);
+        } else {
+            echo json_encode([]);
+        }
+    }
+    exit(); // Stop script execution so HTML isn't sent with the JSON response
+}
+
+/* =========================================================
    HELPER: CHECK COLUMN EXISTS
    ========================================================= */
-function columnExists($conn, $table, $column) {
+function columnExists($conn, $table, $column)
+{
     $table  = mysqli_real_escape_string($conn, $table);
     $column = mysqli_real_escape_string($conn, $column);
 
@@ -17,7 +47,8 @@ function columnExists($conn, $table, $column) {
 /* =========================================================
    HELPER: UPLOAD DOCUMENT + SAVE IN documents TABLE
    ========================================================= */
-function uploadDoc($conn, $asset_id, $file_input, $type) {
+function uploadDoc($conn, $asset_id, $file_input, $type)
+{
     if (!isset($_FILES[$file_input]) || empty($_FILES[$file_input]['name'])) {
         return;
     }
@@ -63,11 +94,12 @@ function uploadDoc($conn, $asset_id, $file_input, $type) {
    FETCH DROPDOWNS
    ========================================================= */
 $categories = mysqli_query($conn, "SELECT category_id, category_name FROM asset_categories ORDER BY category_name ASC");
-$models     = mysqli_query($conn, "SELECT model_id, model_name FROM asset_models ORDER BY model_name ASC");
+// We now fetch category_id along with the model to allow JS filtering
+$models     = mysqli_query($conn, "SELECT model_id, model_name, category_id FROM asset_models ORDER BY model_name ASC");
 $vendors    = mysqli_query($conn, "SELECT vendor_id, vendor_name FROM vendors ORDER BY vendor_name ASC");
 $locations  = mysqli_query($conn, "SELECT location_id, dept_name, floor FROM locations ORDER BY dept_name ASC");
 $statuses   = mysqli_query($conn, "SELECT status_id, status_name FROM asset_status ORDER BY status_name ASC");
-$users      = mysqli_query($conn, "SELECT user_id, name, role FROM users ORDER BY name ASC");
+$users      = mysqli_query($conn, "SELECT user_id, name, role, location_id FROM users WHERE status = 'Active' ORDER BY name ASC");
 
 /* =========================================================
    FIND ASSIGNED STATUS ID
@@ -292,7 +324,6 @@ if (isset($_POST['save_asset'])) {
 
             header("Location: asset_details.php?id=" . $asset_id);
             exit();
-
         } catch (Exception $e) {
             mysqli_rollback($conn);
             $error = $e->getMessage();
@@ -311,7 +342,7 @@ include("../../includes/sidebar.php");
         </div>
         <div class="card-body">
 
-            <?php if($error != ""): ?>
+            <?php if ($error != ""): ?>
                 <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
             <?php endif; ?>
 
@@ -324,7 +355,7 @@ include("../../includes/sidebar.php");
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Asset Name <span class="text-danger">*</span></label>
                         <input type="text" name="asset_name" class="form-control"
-                               value="<?= htmlspecialchars($_POST['asset_name'] ?? '') ?>" required>
+                            value="<?= htmlspecialchars($_POST['asset_name'] ?? '') ?>" required>
                     </div>
                 </div>
 
@@ -332,24 +363,24 @@ include("../../includes/sidebar.php");
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Serial Number <span class="text-danger">*</span></label>
                         <input type="text" name="serial_number" class="form-control"
-                               value="<?= htmlspecialchars($_POST['serial_number'] ?? '') ?>" required>
+                            value="<?= htmlspecialchars($_POST['serial_number'] ?? '') ?>" required>
                     </div>
 
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Purchase Date</label>
-                        <input type="date" name="purchase_date" class="form-control"
-                               value="<?= htmlspecialchars($_POST['purchase_date'] ?? '') ?>">
+                        <input type="date" name="purchase_date" class="form-control" id="purchase_date"
+                            value="<?= htmlspecialchars($_POST['purchase_date'] ?? '') ?>">
                     </div>
                 </div>
 
                 <div class="row">
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Category <span class="text-danger">*</span></label>
-                        <select name="category_id" class="form-select" required>
+                        <select name="category_id" id="category_id" class="form-select" required>
                             <option value="">Select Category</option>
                             <?php
                             mysqli_data_seek($categories, 0);
-                            while($row = mysqli_fetch_assoc($categories)) {
+                            while ($row = mysqli_fetch_assoc($categories)) {
                                 $selected = (($_POST['category_id'] ?? '') == $row['category_id']) ? 'selected' : '';
                                 echo "<option value='{$row['category_id']}' $selected>" . htmlspecialchars($row['category_name']) . "</option>";
                             }
@@ -359,13 +390,14 @@ include("../../includes/sidebar.php");
 
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Model</label>
-                        <select name="model_id" class="form-select">
+                        <select name="model_id" id="model_id" class="form-select">
                             <option value="">Select Model</option>
                             <?php
                             mysqli_data_seek($models, 0);
-                            while($row = mysqli_fetch_assoc($models)) {
+                            while ($row = mysqli_fetch_assoc($models)) {
                                 $selected = (($_POST['model_id'] ?? '') == $row['model_id']) ? 'selected' : '';
-                                echo "<option value='{$row['model_id']}' $selected>" . htmlspecialchars($row['model_name']) . "</option>";
+                                // We add a data attribute here to filter models by category in Javascript
+                                echo "<option value='{$row['model_id']}' data-category='{$row['category_id']}' $selected>" . htmlspecialchars($row['model_name']) . "</option>";
                             }
                             ?>
                         </select>
@@ -373,11 +405,11 @@ include("../../includes/sidebar.php");
 
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Vendor</label>
-                        <select name="vendor_id" class="form-select">
+                        <select name="vendor_id" id="vendor_id" class="form-select">
                             <option value="">Select Vendor</option>
                             <?php
                             mysqli_data_seek($vendors, 0);
-                            while($row = mysqli_fetch_assoc($vendors)) {
+                            while ($row = mysqli_fetch_assoc($vendors)) {
                                 $selected = (($_POST['vendor_id'] ?? '') == $row['vendor_id']) ? 'selected' : '';
                                 echo "<option value='{$row['vendor_id']}' $selected>" . htmlspecialchars($row['vendor_name']) . "</option>";
                             }
@@ -389,11 +421,11 @@ include("../../includes/sidebar.php");
                 <div class="row">
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Location <span class="text-danger">*</span></label>
-                        <select name="location_id" class="form-select" required>
+                        <select name="location_id" id="location_id" class="form-select" required>
                             <option value="">Select Location</option>
                             <?php
                             mysqli_data_seek($locations, 0);
-                            while($row = mysqli_fetch_assoc($locations)) {
+                            while ($row = mysqli_fetch_assoc($locations)) {
                                 $selected = (($_POST['location_id'] ?? '') == $row['location_id']) ? 'selected' : '';
                                 $label = $row['dept_name'];
                                 if (!empty($row['floor'])) {
@@ -411,7 +443,7 @@ include("../../includes/sidebar.php");
                             <option value="">Select Status</option>
                             <?php
                             mysqli_data_seek($statuses, 0);
-                            while($row = mysqli_fetch_assoc($statuses)) {
+                            while ($row = mysqli_fetch_assoc($statuses)) {
                                 $selected = (($_POST['status_id'] ?? '') == $row['status_id']) ? 'selected' : '';
                                 echo "<option value='{$row['status_id']}' $selected>" . htmlspecialchars($row['status_name']) . "</option>";
                             }
@@ -424,16 +456,16 @@ include("../../includes/sidebar.php");
 
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Warranty Expiry</label>
-                        <input type="date" name="warranty_expiry" class="form-control"
-                               value="<?= htmlspecialchars($_POST['warranty_expiry'] ?? '') ?>">
+                        <input type="date" name="warranty_expiry" id="warranty_expiry" class="form-control"
+                            value="<?= htmlspecialchars($_POST['warranty_expiry'] ?? '') ?>">
                     </div>
                 </div>
 
                 <div class="row">
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Cost (₹)</label>
-                        <input type="number" step="0.01" min="0" name="cost" class="form-control"
-                               value="<?= htmlspecialchars($_POST['cost'] ?? '') ?>">
+                        <input type="number" step="0.01" min="0" name="cost" id="cost" class="form-control"
+                            value="<?= htmlspecialchars($_POST['cost'] ?? '') ?>">
                     </div>
                 </div>
 
@@ -468,7 +500,7 @@ include("../../includes/sidebar.php");
 
                         <div class="form-check mb-3">
                             <input class="form-check-input" type="checkbox" name="assign_now" id="assign_now" value="1"
-                                   <?= isset($_POST['assign_now']) ? 'checked' : '' ?>>
+                                <?= isset($_POST['assign_now']) ? 'checked' : '' ?>>
                             <label class="form-check-label fw-bold" for="assign_now">
                                 Assign this asset immediately after saving
                             </label>
@@ -478,29 +510,30 @@ include("../../includes/sidebar.php");
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label">Select User</label>
-                                    <select name="user_id" class="form-select">
+                                    <select name="user_id" id="user_id" class="form-select">
                                         <option value="">-- Choose Employee --</option>
                                         <?php
                                         mysqli_data_seek($users, 0);
-                                        while($row = mysqli_fetch_assoc($users)) {
+                                        while ($row = mysqli_fetch_assoc($users)) {
                                             $selected = (($_POST['user_id'] ?? '') == $row['user_id']) ? 'selected' : '';
-                                            echo "<option value='{$row['user_id']}' $selected>" . htmlspecialchars($row['name'] . " (" . $row['role'] . ")") . "</option>";
+                                            echo "<option value='{$row['user_id']}' data-location='{$row['location_id']}' $selected>" . htmlspecialchars($row['name'] . " (" . $row['role'] . ")") . "</option>";
                                         }
                                         ?>
                                     </select>
+                                    <small class="text-muted">Users are filtered based on the selected Location above.</small>
                                 </div>
 
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label">Assignment Date</label>
                                     <input type="date" name="assigned_date" class="form-control"
-                                           value="<?= htmlspecialchars($_POST['assigned_date'] ?? date('Y-m-d')) ?>">
+                                        value="<?= htmlspecialchars($_POST['assigned_date'] ?? date('Y-m-d')) ?>">
                                 </div>
                             </div>
 
                             <div class="mb-3">
                                 <label class="form-label">Remarks / Handover Notes</label>
                                 <textarea name="assign_remarks" class="form-control" rows="3"
-                                          placeholder="e.g. Handed over with charger and bag..."><?= htmlspecialchars($_POST['assign_remarks'] ?? '') ?></textarea>
+                                    placeholder="e.g. Handed over with charger and bag..."><?= htmlspecialchars($_POST['assign_remarks'] ?? '') ?></textarea>
                             </div>
                         </div>
                     </div>
@@ -522,51 +555,143 @@ include("../../includes/sidebar.php");
 </div>
 
 <script>
-document.addEventListener("DOMContentLoaded", function () {
-    const assignNow = document.getElementById("assign_now");
-    const assignmentFields = document.getElementById("assignment_fields");
-    const statusSelect = document.getElementById("status_id");
-    const assignedStatusId = "<?= $assigned_status_id ?>";
+    document.addEventListener("DOMContentLoaded", function() {
+        // ----------------------------------------------------
+        // Existing logic for immediate Assignment Toggle
+        // ----------------------------------------------------
+        const assignNow = document.getElementById("assign_now");
+        const assignmentFields = document.getElementById("assignment_fields");
+        const statusSelect = document.getElementById("status_id");
+        const assignedStatusId = "<?= $assigned_status_id ?>";
 
-    let previousStatus = statusSelect.value;
+        let previousStatus = statusSelect.value;
 
-    function toggleAssignmentFields() {
-        if (assignNow.checked) {
-            assignmentFields.style.display = "block";
+        function toggleAssignmentFields() {
+            if (assignNow.checked) {
+                assignmentFields.style.display = "block";
 
-            if (statusSelect.value !== assignedStatusId) {
+                if (statusSelect.value !== assignedStatusId) {
+                    previousStatus = statusSelect.value;
+                }
+                if (assignedStatusId !== "") {
+                    statusSelect.value = assignedStatusId;
+                }
+                statusSelect.setAttribute("disabled", "disabled");
+            } else {
+                assignmentFields.style.display = "none";
+                statusSelect.removeAttribute("disabled");
+                if (previousStatus !== "") {
+                    statusSelect.value = previousStatus;
+                }
+            }
+        }
+
+        assignNow.addEventListener("change", toggleAssignmentFields);
+        statusSelect.addEventListener("change", function() {
+            if (!assignNow.checked) {
                 previousStatus = statusSelect.value;
             }
+        });
 
-            if (assignedStatusId !== "") {
-                statusSelect.value = assignedStatusId;
-            }
-
-            statusSelect.setAttribute("disabled", "disabled");
-        } else {
-            assignmentFields.style.display = "none";
+        document.querySelector("form").addEventListener("submit", function() {
             statusSelect.removeAttribute("disabled");
+        });
+        toggleAssignmentFields();
 
-            if (previousStatus !== "") {
-                statusSelect.value = previousStatus;
+
+        // ----------------------------------------------------
+        // NEW LOGIC: Category -> Model Dynamic Filtering
+        // ----------------------------------------------------
+        const categorySelect = document.getElementById("category_id");
+        const modelSelect = document.getElementById("model_id");
+
+        // Store original model options so we can re-filter later
+        const allModels = Array.from(modelSelect.options);
+
+        categorySelect.addEventListener('change', function() {
+            const selectedCategoryId = this.value;
+
+            // Reset the Model dropdown to only contain the default option
+            modelSelect.innerHTML = '<option value="">Select Model</option>';
+
+            // Re-populate models that belong to the selected category
+            allModels.forEach(option => {
+                if (option.value === "") return; // Skip the default option
+                if (selectedCategoryId === "" || option.getAttribute('data-category') === selectedCategoryId) {
+                    modelSelect.appendChild(option.cloneNode(true));
+                }
+            });
+        });
+
+        // ----------------------------------------------------
+        // NEW LOGIC: Model Auto-fill Data Fetching
+        // ----------------------------------------------------
+        const vendorSelect = document.getElementById("vendor_id");
+        const purchaseDateInput = document.getElementById("purchase_date");
+        const warrantyExpiryInput = document.getElementById("warranty_expiry");
+        const costInput = document.getElementById("cost");
+
+        modelSelect.addEventListener('change', function() {
+            const selectedModelId = this.value;
+
+            // If cleared, empty the fields
+            if (!selectedModelId) {
+                vendorSelect.value = '';
+                purchaseDateInput.value = '';
+                warrantyExpiryInput.value = '';
+                costInput.value = '';
+                return;
+            }
+
+            // Fetch data for the selected model via AJAX pointing back to this same file
+            fetch(window.location.pathname + `?action=get_model_details&model_id=${selectedModelId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && Object.keys(data).length > 0) {
+                        if (data.vendor_id) vendorSelect.value = data.vendor_id;
+                        if (data.purchase_date) purchaseDateInput.value = data.purchase_date;
+                        if (data.warranty_expiry) warrantyExpiryInput.value = data.warranty_expiry;
+                        if (data.cost) costInput.value = data.cost;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching model details:', error);
+                });
+        });
+
+        // ----------------------------------------------------
+        // Location -> User Dynamic Filtering
+        // ----------------------------------------------------
+        const locationSelect = document.getElementById("location_id");
+        const userSelect = document.getElementById("user_id");
+
+        if (locationSelect && userSelect) {
+            // Store original user options so we can re-filter later
+            const allUsers = Array.from(userSelect.options);
+
+            locationSelect.addEventListener('change', function() {
+                const selectedLocationId = this.value;
+
+                // Reset the User dropdown
+                userSelect.innerHTML = '<option value="">-- Choose Employee --</option>';
+
+                // Repopulate matching users based on Location ID
+                allUsers.forEach(option => {
+                    if (option.value === "") return; // Skip the placeholder
+
+                    // If no location is selected, or the user's location matches the selected location
+                    if (selectedLocationId === "" || option.getAttribute('data-location') === selectedLocationId) {
+                        userSelect.appendChild(option.cloneNode(true));
+                    }
+                });
+            });
+
+            // Initialize user filter if a location is already selected (e.g. page refresh)
+            if (locationSelect.value) {
+                locationSelect.dispatchEvent(new Event('change'));
             }
         }
-    }
-
-    assignNow.addEventListener("change", toggleAssignmentFields);
-
-    statusSelect.addEventListener("change", function () {
-        if (!assignNow.checked) {
-            previousStatus = statusSelect.value;
-        }
     });
-
-    document.querySelector("form").addEventListener("submit", function () {
-        statusSelect.removeAttribute("disabled");
-    });
-
-    toggleAssignmentFields();
-});
 </script>
 
 <?php include("../../includes/footer.php"); ?>
