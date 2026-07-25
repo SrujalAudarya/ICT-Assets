@@ -6,12 +6,16 @@ include("../../config/db.php");
 $id = mysqli_real_escape_string($conn, $_GET['id']);
 
 /* ---------- MODEL BASIC INFO ---------- */
+// UPDATED: Joined asset_categories a second time to fetch the Parent Category Name
 $model_query = "
     SELECT m.*, 
            c.category_name, 
+           c.parent_id,
+           pc.category_name AS parent_category_name,
            v.vendor_name
     FROM asset_models m
     LEFT JOIN asset_categories c ON m.category_id = c.category_id
+    LEFT JOIN asset_categories pc ON c.parent_id = pc.category_id
     LEFT JOIN vendors v ON m.vendor_id = v.vendor_id
     WHERE m.model_id = '$id'
 ";
@@ -181,13 +185,50 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                     <table class="table table-sm">
                         <tr><th width="40%">Model Name</th><td><?= htmlspecialchars($model['model_name']) ?></td></tr>
                         <tr><th>Make</th><td><?= htmlspecialchars($model['make_name'] ?: 'N/A') ?></td></tr>
-                        <tr><th>Category</th><td><?= htmlspecialchars($model['category_name'] ?: 'N/A') ?></td></tr>
+                        
+                        <!-- DYNAMIC CATEGORY DISPLAY (Shows Parent » Child) -->
+                        <tr>
+                            <th>Category</th>
+                            <td>
+                                <?php 
+                                    if (!empty($model['parent_category_name'])) {
+                                        echo htmlspecialchars($model['parent_category_name']) . ' &raquo; <span class="fw-bold">' . htmlspecialchars($model['category_name']) . '</span>';
+                                    } else {
+                                        echo htmlspecialchars($model['category_name'] ?: 'N/A');
+                                    }
+                                ?>
+                            </td>
+                        </tr>
+
                         <tr><th>Vendor</th><td><?= htmlspecialchars($model['vendor_name'] ?: 'N/A') ?></td></tr>
                         <tr><th>Contract No</th><td><?= htmlspecialchars($model['contract_no'] ?: 'N/A') ?></td></tr>
                         <tr><th>Quantity</th><td><?= (int)($model['quantity'] ?? 0) ?></td></tr>
-                        <tr><th>Date</th><td><?= !empty($model['purchase_date']) ? date('d M Y', strtotime($model['purchase_date'])) : 'N/A' ?></td></tr>
                         <tr><th>F.Y.</th><td><?= htmlspecialchars($model['financial_year'] ?: 'N/A') ?></td></tr>
-                        <tr><th>Created At</th><td><?= !empty($model['created_at']) ? date('d M Y', strtotime($model['created_at'])) : 'N/A' ?></td></tr>
+                        
+                        <tr><th>Purchase Date</th><td class="fw-bold"><?= !empty($model['purchase_date']) ? date('d M Y', strtotime($model['purchase_date'])) : 'N/A' ?></td></tr>
+                        <tr>
+                            <th>Expiry Date</th>
+                            <td>
+                                <?php 
+                                    if (!empty($model['expiry_date'])) {
+                                        $is_exp = strtotime($model['expiry_date']) < time();
+                                        echo "<span class='fw-bold " . ($is_exp ? "text-danger" : "text-success") . "'>" . date('d M Y', strtotime($model['expiry_date'])) . "</span>";
+                                    } else {
+                                        echo 'N/A';
+                                    }
+                                ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th class="align-middle">Supply Order</th>
+                            <td>
+                                <?php if (!empty($model['supply_order_doc'])): ?>
+                                    <a href="../../<?= htmlspecialchars($model['supply_order_doc']) ?>" target="_blank" class="btn btn-sm btn-outline-danger w-100"><i class="bi bi-file-pdf"></i> View Doc</a>
+                                <?php else: ?>
+                                    <span class="badge bg-secondary">Not Uploaded</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
                     </table>
                 </div>
             </div>
