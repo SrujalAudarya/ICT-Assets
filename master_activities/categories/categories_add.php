@@ -3,11 +3,16 @@ global $conn;
 include("../../includes/auth.php");
 include("../../config/db.php");
 
+$error = "";
+
 if(isset($_POST['save'])) {
     $name = mysqli_real_escape_string($conn, $_POST['category_name']);
     $description = mysqli_real_escape_string($conn, $_POST['description']);
+    $parent_id = !empty($_POST['parent_id']) ? (int)$_POST['parent_id'] : 0;
+    
+    $parent_id_sql = ($parent_id > 0) ? "'$parent_id'" : "NULL";
 
-    $query = "INSERT INTO asset_categories (category_name, description) VALUES ('$name', '$description')";
+    $query = "INSERT INTO asset_categories (category_name, parent_id, description) VALUES ('$name', $parent_id_sql, '$description')";
     
     if(mysqli_query($conn, $query)) {
         header("Location: " . ROUTE_CATEGORIES);
@@ -27,13 +32,28 @@ include("../../includes/sidebar.php");
             <h4 class="mb-0">Add New Category</h4>
         </div>
         <div class="card-body">
-            <?php if(isset($error)): ?>
+            <?php if(!empty($error)): ?>
                 <div class="alert alert-danger"><?= $error ?></div>
             <?php endif; ?>
 
             <form method="post">
+                <!-- PARENT CATEGORY SELECTION -->
                 <div class="mb-3">
-                    <label class="form-label">Category Name</label>
+                    <label class="form-label">Parent Category</label>
+                    <select name="parent_id" class="form-select">
+                        <option value="">-- None (Make Main Category) --</option>
+                        <?php
+                        $cat_res = mysqli_query($conn, "SELECT * FROM asset_categories WHERE parent_id IS NULL OR parent_id = 0 ORDER BY category_name ASC");
+                        while($cat = mysqli_fetch_assoc($cat_res)) {
+                            echo "<option value='{$cat['category_id']}'>{$cat['category_name']}</option>";
+                        }
+                        ?>
+                    </select>
+                    <small class="text-muted">Select a parent category if this is a sub-category (e.g. choose PC for Desktop PC).</small>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Category Name <span class="text-danger">*</span></label>
                     <input type="text" name="category_name" class="form-control" placeholder="e.g. Laptops, Printers, Servers" required>
                 </div>
 
