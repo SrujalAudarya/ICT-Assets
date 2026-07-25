@@ -75,10 +75,11 @@ $result = mysqli_query($conn, $query);
     <div class="card shadow-sm">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover table-striped mb-0">
+                <table class="table table-hover table-striped align-middle mb-0">
                     <thead class="table-dark">
                         <tr>
                             <th>ID</th>
+                            <th>Image</th>
                             <th>Model Name</th>
                             <th>Category</th>
                             <th>Vendor</th>
@@ -98,6 +99,17 @@ $result = mysqli_query($conn, $query);
                             <tr>
                                 <!-- Serial Number instead of actual model_id -->
                                 <td><?= $sr++ ?></td>
+
+                                <!-- Model Image / Logo Cell -->
+                                <td class="text-center" style="width: 60px;">
+                                    <?php if (!empty($row['model_image'])): ?>
+                                        <img src="../../<?= htmlspecialchars($row['model_image']) ?>" alt="Logo" style="height: 40px; width: 40px; object-fit: contain;" class="rounded border p-1 bg-white">
+                                    <?php else: ?>
+                                        <div class="bg-light border text-muted d-flex align-items-center justify-content-center rounded mx-auto" style="height: 40px; width: 40px;">
+                                            <i class="bi bi-image text-secondary fs-5"></i>
+                                        </div>
+                                    <?php endif; ?>
+                                </td>
 
                                 <td class="fw-bold">
                                     <a href="models_details.php?id=<?= $row['model_id'] ?>" class="text-decoration-none">

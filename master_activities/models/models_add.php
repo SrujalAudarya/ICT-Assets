@@ -15,17 +15,44 @@ if(isset($_POST['save'])) {
     $specifications = mysqli_real_escape_string($conn, $_POST['specifications']);
 
     $purchase_date_sql = $purchase_date ? "'$purchase_date'" : "NULL";
-
-    $query = "INSERT INTO asset_models 
-                (model_name, category_id, vendor_id, make_name, contract_no, quantity, purchase_date, financial_year, specifications) 
-              VALUES 
-                ('$name', '$category_id', '$vendor_id', '$make_name', '$contract_no', '$quantity', $purchase_date_sql, '$financial_year', '$specifications')";
     
-    if(mysqli_query($conn, $query)) {
-        header("Location: " . ROUTE_MODELS);
-        exit();
-    } else {
-        $error = mysqli_error($conn);
+    // Handle Image Upload
+    $image_path_db = "NULL";
+    if (isset($_FILES['model_image']) && $_FILES['model_image']['error'] == UPLOAD_ERR_OK) {
+        $file_ext = strtolower(pathinfo($_FILES['model_image']['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+        
+        if (in_array($file_ext, $allowed)) {
+            $upload_dir = "../../uploads/models/";
+            if (!is_dir($upload_dir)) {
+                mkdir($upload_dir, 0777, true);
+            }
+            
+            $new_filename = "model_" . time() . "_" . rand(1000, 9999) . "." . $file_ext;
+            $target_file = $upload_dir . $new_filename;
+            
+            if (move_uploaded_file($_FILES['model_image']['tmp_name'], $target_file)) {
+                $image_path_db = "'uploads/models/" . $new_filename . "'";
+            } else {
+                $error = "Failed to move uploaded image.";
+            }
+        } else {
+            $error = "Invalid image format. Allowed formats: JPG, PNG, WEBP, GIF.";
+        }
+    }
+
+    if (empty($error)) {
+        $query = "INSERT INTO asset_models 
+                    (model_name, category_id, vendor_id, make_name, contract_no, quantity, purchase_date, financial_year, specifications, model_image) 
+                  VALUES 
+                    ('$name', '$category_id', '$vendor_id', '$make_name', '$contract_no', '$quantity', $purchase_date_sql, '$financial_year', '$specifications', $image_path_db)";
+        
+        if(mysqli_query($conn, $query)) {
+            header("Location: " . ROUTE_MODELS);
+            exit();
+        } else {
+            $error = mysqli_error($conn);
+        }
     }
 }
 
@@ -43,7 +70,7 @@ include("../../includes/sidebar.php");
                 <div class="alert alert-danger"><?= $error ?></div>
             <?php endif; ?>
 
-            <form method="post">
+            <form method="post" enctype="multipart/form-data">
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Model Name</label>
@@ -105,6 +132,12 @@ include("../../includes/sidebar.php");
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Financial Year</label>
                         <input type="text" name="financial_year" class="form-control" placeholder="e.g. 2025-26">
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Model Image / Logo</label>
+                        <input type="file" name="model_image" class="form-control" accept=".jpg,.jpeg,.png,.webp,.gif">
+                        <small class="text-muted">Optional. Recommended format: PNG or WEBP.</small>
                     </div>
                 </div>
 

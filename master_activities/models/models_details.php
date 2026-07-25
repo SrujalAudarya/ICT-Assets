@@ -159,13 +159,25 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
     </div>
 
     <div class="row">
-        <!-- LEFT COLUMN: MODEL INFO -->
+        <!-- LEFT COLUMN: MODEL INFO & IMAGE -->
         <div class="col-md-4">
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-primary text-white">
                     <h5 class="mb-0">Model Information</h5>
                 </div>
                 <div class="card-body">
+                    <!-- MODEL LOGO / IMAGE DISPLAY -->
+                    <div class="text-center mb-3 p-2 bg-light border rounded">
+                        <?php if (!empty($model['model_image'])): ?>
+                            <img src="../../<?= htmlspecialchars($model['model_image']) ?>" class="img-fluid rounded" style="max-height: 150px; object-fit: contain;" alt="Model Image/Logo">
+                        <?php else: ?>
+                            <div class="text-muted py-4">
+                                <i class="bi bi-image fs-1 d-block mb-1"></i>
+                                <small>No Image / Logo Uploaded</small>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
                     <table class="table table-sm">
                         <tr><th width="40%">Model Name</th><td><?= htmlspecialchars($model['model_name']) ?></td></tr>
                         <tr><th>Make</th><td><?= htmlspecialchars($model['make_name'] ?: 'N/A') ?></td></tr>
@@ -312,7 +324,6 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
 <script>
     function exportToPDF() {
         const { jsPDF } = window.jspdf;
-        // Using landscape since tables with many columns fit better
         const doc = new jsPDF('landscape');
 
         doc.setFontSize(16);
@@ -331,7 +342,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                 cellPadding: 2
             },
             headStyles: {
-                fillColor: [52, 58, 64] // Matches standard dark header
+                fillColor: [52, 58, 64]
             }
         });
 
