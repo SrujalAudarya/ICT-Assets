@@ -213,7 +213,7 @@ include("includes/sidebar.php");
             <div class="card shadow-sm h-100">
                 <div class="card-header bg-primary text-white fw-bold py-3 d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-person-check me-2"></i> Recent Assignments</span>
-                    <a href="transactions/assignments_list.php" class="btn btn-sm btn-light py-0 text-primary">View All</a>
+                    <a href="master_activities/assignments/assignments_list.php" class="btn btn-sm btn-light py-0 text-primary">View All</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">

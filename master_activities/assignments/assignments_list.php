@@ -197,7 +197,7 @@ include("../../includes/sidebar.php");
                                 <td class="text-muted small"><?= htmlspecialchars($row['remarks'] ?? '-') ?></td>
                                 <td class="text-center no-export">
                                     <div class="btn-group btn-group-sm">
-                                        <a href="assignment_details.php?id=<?= $row['asset_id'] ?>" class="btn btn-info text-white" title="View Asset"><i class="bi bi-eye"></i></a>
+                                        <a href="assignment_details.php?id=<?= $row['assignment_id'] ?>" class="btn btn-info text-white" title="View Asset"><i class="bi bi-eye"></i></a>
                                         <a href="assignment_edit.php?id=<?= $row['assignment_id'] ?>" class="btn btn-warning" title="Edit Record"><i class="bi bi-pencil"></i></a>
                                         
                                         <?php if($tab == 'active'): ?>
