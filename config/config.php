@@ -1,8 +1,8 @@
 <?php
 // Define the base URL of the application
 // Adjust this if your project folder name is different
-//const BASE_URL = 'http://172.21.54.7:8080/AMS/';
-const BASE_URL = 'http://localhost/ICT-Assets/';
+const BASE_URL = 'http://172.21.54.7:8080/AMS/';
+// const BASE_URL = 'http://localhost/ICT-Assets/';
 
 // Define common routes
 const ROUTE_DASHBOARD = BASE_URL . 'dashboard.php';

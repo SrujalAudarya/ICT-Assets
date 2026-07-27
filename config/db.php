@@ -2,7 +2,7 @@
 $host = "localhost";
 $user = "root";
 $password = "";
-$database = "ict_assets_management";
+$database = "ict_asset_management";
 
 $conn = mysqli_connect($host, $user, $password, $database);
 
