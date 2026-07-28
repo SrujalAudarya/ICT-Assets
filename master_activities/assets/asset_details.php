@@ -38,17 +38,6 @@ if (!$asset) {
 }
 
 /* =========================================================
-   FETCH SPECIFIC ASSET DOCUMENTS (INVOICE, WARRANTY, ETC)
-   ========================================================= */
-$docs_query = "SELECT * FROM documents WHERE asset_id = '$id'";
-$docs_res = mysqli_query($conn, $docs_query);
-$documents = [];
-while($d = mysqli_fetch_assoc($docs_res)) {
-    // Store by document type for easy retrieval in HTML
-    $documents[$d['document_type']] = $d;
-}
-
-/* =========================================================
    FETCH ASSIGNMENT HISTORY
    ========================================================= */
 $history_query = "SELECT asn.*, u.name as user_name, u.role, l.dept_name
@@ -170,10 +159,32 @@ include("../../includes/sidebar.php");
                             <span class="d-block text-muted small">Warranty Expiry</span>
                             <?php 
                                 if (!empty($asset['warranty_expiry'])) {
-                                    $expiry_date = strtotime($asset['warranty_expiry']);
-                                    $is_expired = $expiry_date < time();
-                                    $color = $is_expired ? 'text-danger' : 'text-success';
-                                    echo "<span class='fw-bold $color'>" . date('d M Y', $expiry_date) . ($is_expired ? " (Expired)" : " (Active)") . "</span>";
+                                    // Robust Day Calculation using DateTime
+                                    $expiry_dt = new DateTime($asset['warranty_expiry']);
+                                    $now_dt = new DateTime();
+                                    
+                                    // Set both to midnight to count pure days
+                                    $expiry_dt->setTime(0, 0, 0);
+                                    $now_dt->setTime(0, 0, 0);
+                                    
+                                    $interval = $now_dt->diff($expiry_dt);
+                                    $days = $interval->days;
+                                    
+                                    // If interval is negative, it's expired (invert = 1)
+                                    $is_expired = $interval->invert == 1; 
+
+                                    if ($days == 0) {
+                                        $color = 'text-warning';
+                                        $status_text = " (Expires Today)";
+                                    } elseif ($is_expired) {
+                                        $color = 'text-danger';
+                                        $status_text = " (Expired $days days ago)";
+                                    } else {
+                                        $color = 'text-success';
+                                        $status_text = " ($days days remaining)";
+                                    }
+
+                                    echo "<span class='fw-bold $color'>" . $expiry_dt->format('d M Y') . $status_text . "</span>";
                                 } else {
                                     echo "<span class='fw-bold'>N/A</span>";
                                 }
@@ -255,54 +266,6 @@ include("../../includes/sidebar.php");
                             </div>
                             <?php if (!empty($asset['supply_order_doc'])): ?>
                                 <a href="../../<?= htmlspecialchars($asset['supply_order_doc']) ?>" target="_blank" class="btn btn-sm btn-outline-primary">View</a>
-                            <?php else: ?>
-                                <span class="badge bg-secondary">N/A</span>
-                            <?php endif; ?>
-                        </li>
-
-                        <!-- 2. SALE ORDER -->
-                        <li class="list-group-item d-flex justify-content-between align-items-center py-3">
-                            <div class="d-flex align-items-center">
-                                <i class="bi bi-receipt fs-3 text-success me-3"></i>
-                                <div>
-                                    <h6 class="mb-0 fw-bold">Sale Order</h6>
-                                    <small class="text-muted">Procurement Doc</small>
-                                </div>
-                            </div>
-                            <?php if (isset($documents['SALE_ORDER'])): ?>
-                                <a href="../../<?= htmlspecialchars($documents['SALE_ORDER']['file_path']) ?>" target="_blank" class="btn btn-sm btn-outline-success">View</a>
-                            <?php else: ?>
-                                <span class="badge bg-secondary">N/A</span>
-                            <?php endif; ?>
-                        </li>
-
-                        <!-- 3. INVOICE -->
-                        <li class="list-group-item d-flex justify-content-between align-items-center py-3">
-                            <div class="d-flex align-items-center">
-                                <i class="bi bi-file-invoice fs-3 text-danger me-3"></i>
-                                <div>
-                                    <h6 class="mb-0 fw-bold">Invoice</h6>
-                                    <small class="text-muted">Financial Doc</small>
-                                </div>
-                            </div>
-                            <?php if (isset($documents['INVOICE'])): ?>
-                                <a href="../../<?= htmlspecialchars($documents['INVOICE']['file_path']) ?>" target="_blank" class="btn btn-sm btn-outline-danger">View</a>
-                            <?php else: ?>
-                                <span class="badge bg-secondary">N/A</span>
-                            <?php endif; ?>
-                        </li>
-
-                        <!-- 4. WARRANTY -->
-                        <li class="list-group-item d-flex justify-content-between align-items-center py-3">
-                            <div class="d-flex align-items-center">
-                                <i class="bi bi-shield-check fs-3 text-warning me-3"></i>
-                                <div>
-                                    <h6 class="mb-0 fw-bold">Warranty Card</h6>
-                                    <small class="text-muted">Support Doc</small>
-                                </div>
-                            </div>
-                            <?php if (isset($documents['WARRANTY'])): ?>
-                                <a href="../../<?= htmlspecialchars($documents['WARRANTY']['file_path']) ?>" target="_blank" class="btn btn-sm btn-outline-warning">View</a>
                             <?php else: ?>
                                 <span class="badge bg-secondary">N/A</span>
                             <?php endif; ?>
