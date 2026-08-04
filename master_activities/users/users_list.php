@@ -147,6 +147,7 @@ $result = mysqli_query($conn, $query);
                         <option value="">All Roles</option>
                         <option value="Admin" <?= ($role == 'Admin') ? 'selected' : '' ?>>Admin</option>
                         <option value="ICT Staff" <?= ($role == 'ICT Staff') ? 'selected' : '' ?>>ICT Staff</option>
+                        <option value="Apprentice" <?= ($role == 'Apprentice') ? 'selected' : '' ?>>Apprentice</option>
                         <option value="Employee" <?= ($role == 'Employee') ? 'selected' : '' ?>>Employee</option>
                         <option value="Server" <?= ($role == 'Server') ? 'selected' : '' ?>>Server</option>
                         <option value="DRC Room" <?= ($role == 'DRC Room') ? 'selected' : '' ?>>DRC Room</option>
@@ -211,6 +212,7 @@ $result = mysqli_query($conn, $query);
                                         if ($row['role'] == 'Admin') $role_class = 'bg-danger';
                                         if ($row['role'] == 'ICT Staff') $role_class = 'bg-primary';
                                         if ($row['role'] == 'Employee') $role_class = 'bg-success';
+                                        if ($row['role'] == 'Apprentice') $role_class = 'bg-info text-dark';
                                         if ($row['role'] == 'Server') $role_class = 'bg-dark';
                                         if ($row['role'] == 'DRC Room') $role_class = 'bg-warning text-dark';
                                         ?>

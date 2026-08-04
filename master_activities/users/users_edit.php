@@ -195,7 +195,7 @@ include("../../includes/sidebar.php");
                                 <label class="form-label text-muted fw-bold mb-1">System Role <span class="text-danger">*</span></label>
                                 <select name="role" class="form-select" required>
                                     <?php
-                                    $roles = ['Admin', 'ICT Staff', 'Employee', 'Server', 'DRC Room'];
+                                    $roles = ['Admin', 'ICT Staff', 'Employee', 'Apprentice', 'Server', 'DRC Room'];
                                     foreach ($roles as $r) {
                                         $sel = ($user['role'] == $r) ? "selected" : "";
                                         echo "<option value='$r' $sel>$r</option>";

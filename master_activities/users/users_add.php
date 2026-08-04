@@ -81,6 +81,7 @@ include("../../includes/sidebar.php");
                         <label class="form-label">System Role</label>
                         <select name="role" id="roleSelect" class="form-select" onchange="togglePassword()" required>
                             <option value="Employee">Employee</option>
+                            <option value="Apprentice">Apprentice</option>
                             <option value="Admin">Admin</option>
                             <option value="ICT Staff">ICT Staff</option>
                             <option value="Server">Server</option>

@@ -10,7 +10,6 @@ if (isset($_GET['action']) && $_GET['action'] == 'get_model_details') {
     header('Content-Type: application/json');
     $mod_id = (int)$_GET['model_id'];
 
-    // Attempt to get the latest asset data matching this model to pre-fill the form
     $query = "SELECT vendor_id, purchase_date, warranty_expiry, cost 
               FROM assets 
               WHERE model_id = $mod_id 
@@ -20,7 +19,6 @@ if (isset($_GET['action']) && $_GET['action'] == 'get_model_details') {
     if ($res && $row = mysqli_fetch_assoc($res)) {
         echo json_encode($row);
     } else {
-        // Fallback: Check if the asset_models table has a default vendor_id
         $fallback_query = "SELECT vendor_id FROM asset_models WHERE model_id = $mod_id LIMIT 1";
         $fallback_res = mysqli_query($conn, $fallback_query);
         if ($fallback_res && $fallback_row = mysqli_fetch_assoc($fallback_res)) {
@@ -29,7 +27,7 @@ if (isset($_GET['action']) && $_GET['action'] == 'get_model_details') {
             echo json_encode([]);
         }
     }
-    exit(); // Stop script execution so HTML isn't sent with the JSON response
+    exit();
 }
 
 /* =========================================================
@@ -93,13 +91,15 @@ function uploadDoc($conn, $asset_id, $file_input, $type)
 /* =========================================================
    FETCH DROPDOWNS
    ========================================================= */
-$categories = mysqli_query($conn, "SELECT category_id, category_name FROM asset_categories ORDER BY category_name ASC");
-// We now fetch category_id along with the model to allow JS filtering
-$models     = mysqli_query($conn, "SELECT model_id, model_name, category_id FROM asset_models ORDER BY model_name ASC");
-$vendors    = mysqli_query($conn, "SELECT vendor_id, vendor_name FROM vendors ORDER BY vendor_name ASC");
-$locations  = mysqli_query($conn, "SELECT location_id, dept_name, floor FROM locations ORDER BY dept_name ASC");
-$statuses   = mysqli_query($conn, "SELECT status_id, status_name FROM asset_status ORDER BY status_name ASC");
-$users      = mysqli_query($conn, "SELECT user_id, name, role, location_id FROM users WHERE status = 'Active' ORDER BY name ASC");
+// FIX APPLIED HERE: Fetch using 0 OR NULL for Main Categories[cite: 2]
+$main_categories = mysqli_query($conn, "SELECT category_id, category_name FROM asset_categories WHERE parent_id = 0 OR parent_id IS NULL ORDER BY category_name ASC");
+$sub_categories  = mysqli_query($conn, "SELECT category_id, category_name, parent_id FROM asset_categories WHERE parent_id > 0 ORDER BY category_name ASC");
+
+$models    = mysqli_query($conn, "SELECT model_id, model_name, category_id FROM asset_models ORDER BY model_name ASC");
+$vendors   = mysqli_query($conn, "SELECT vendor_id, vendor_name FROM vendors ORDER BY vendor_name ASC");
+$locations = mysqli_query($conn, "SELECT location_id, dept_name, floor FROM locations ORDER BY dept_name ASC");
+$statuses  = mysqli_query($conn, "SELECT status_id, status_name FROM asset_status ORDER BY status_name ASC");
+$users     = mysqli_query($conn, "SELECT user_id, name, role, location_id FROM users WHERE status = 'Active' ORDER BY name ASC");
 
 /* =========================================================
    FIND ASSIGNED STATUS ID
@@ -118,12 +118,13 @@ $error = "";
 
 if (isset($_POST['save_asset'])) {
 
-    // -----------------------------
-    // ASSET DATA
-    // -----------------------------
     $asset_name      = trim($_POST['asset_name'] ?? '');
     $serial_number   = trim($_POST['serial_number'] ?? '');
-    $category_id     = trim($_POST['category_id'] ?? '');
+
+    $main_category_id = trim($_POST['main_category_id'] ?? '');
+    $sub_category_id  = trim($_POST['sub_category_id'] ?? '');
+    $category_id      = !empty($sub_category_id) ? $sub_category_id : $main_category_id;
+
     $model_id        = trim($_POST['model_id'] ?? '');
     $vendor_id       = trim($_POST['vendor_id'] ?? '');
     $location_id     = trim($_POST['location_id'] ?? '');
@@ -132,23 +133,17 @@ if (isset($_POST['save_asset'])) {
     $warranty_expiry = trim($_POST['warranty_expiry'] ?? '');
     $cost            = trim($_POST['cost'] ?? '');
 
-    // -----------------------------
-    // OPTIONAL ASSIGNMENT DATA
-    // -----------------------------
     $assign_now      = isset($_POST['assign_now']) ? 1 : 0;
     $user_id         = trim($_POST['user_id'] ?? '');
     $assigned_date   = trim($_POST['assigned_date'] ?? date('Y-m-d'));
     $assign_remarks  = trim($_POST['assign_remarks'] ?? '');
 
-    // -----------------------------
-    // VALIDATION
-    // -----------------------------
     if ($asset_name == "") {
         $error = "Asset Name is required.";
     } elseif ($serial_number == "") {
         $error = "Serial Number is required.";
     } elseif ($category_id == "") {
-        $error = "Please select Category.";
+        $error = "Please select a Category.";
     } elseif ($location_id == "") {
         $error = "Please select Location.";
     } elseif (!$assign_now && $status_id == "") {
@@ -157,7 +152,6 @@ if (isset($_POST['save_asset'])) {
         $error = "Please select User because 'Assign Now' is checked.";
     }
 
-    // Duplicate serial number check
     if ($error == "") {
         $serial_safe = mysqli_real_escape_string($conn, $serial_number);
         $dup = mysqli_query($conn, "SELECT asset_id FROM assets WHERE serial_number = '$serial_safe' LIMIT 1");
@@ -166,7 +160,6 @@ if (isset($_POST['save_asset'])) {
         }
     }
 
-    // Duplicate asset code check (only if column exists and asset code entered)
     $has_asset_name_column = columnExists($conn, "assets", "asset_name");
 
     if ($error == "" && $has_asset_name_column && $asset_name != "") {
@@ -181,9 +174,6 @@ if (isset($_POST['save_asset'])) {
         mysqli_begin_transaction($conn);
 
         try {
-            // -----------------------------
-            // IF ASSIGN NOW => FORCE STATUS = Assigned
-            // -----------------------------
             if ($assign_now) {
                 $assigned_status_q = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name='Assigned' LIMIT 1");
                 $assigned_status = mysqli_fetch_assoc($assigned_status_q);
@@ -191,13 +181,9 @@ if (isset($_POST['save_asset'])) {
                 if (!$assigned_status) {
                     throw new Exception("Assigned status not found in asset_status table.");
                 }
-
                 $status_id = $assigned_status['status_id'];
             }
 
-            // -----------------------------
-            // ESCAPE VALUES
-            // -----------------------------
             $asset_name_safe    = mysqli_real_escape_string($conn, $asset_name);
             $serial_number_safe = mysqli_real_escape_string($conn, $serial_number);
             $category_id_safe   = mysqli_real_escape_string($conn, $category_id);
@@ -210,61 +196,25 @@ if (isset($_POST['save_asset'])) {
             $warranty_expiry_sql = ($warranty_expiry !== '') ? "'" . mysqli_real_escape_string($conn, $warranty_expiry) . "'" : "NULL";
             $cost_sql            = ($cost !== '') ? "'" . mysqli_real_escape_string($conn, $cost) . "'" : "NULL";
 
-            // -----------------------------
-            // INSERT INTO assets
-            // -----------------------------
             if ($has_asset_name_column) {
                 $asset_name_sql = ($asset_name !== '') ? "'$asset_name_safe'" : "NULL";
-
                 $insert_asset = "
                     INSERT INTO assets (
-                        asset_name,
-                        model_id,
-                        serial_number,
-                        category_id,
-                        vendor_id,
-                        location_id,
-                        status_id,
-                        purchase_date,
-                        warranty_expiry,
-                        cost
+                        asset_name, model_id, serial_number, category_id, vendor_id,
+                        location_id, status_id, purchase_date, warranty_expiry, cost
                     ) VALUES (
-                        '$asset_name_safe',
-                        $model_id_sql,
-                        '$serial_number_safe',
-                        '$category_id_safe',
-                        $vendor_id_sql,
-                        '$location_id_safe',
-                        '$status_id_safe',
-                        $purchase_date_sql,
-                        $warranty_expiry_sql,
-                        $cost_sql
+                        '$asset_name_safe', $model_id_sql, '$serial_number_safe', '$category_id_safe', $vendor_id_sql,
+                        '$location_id_safe', '$status_id_safe', $purchase_date_sql, $warranty_expiry_sql, $cost_sql
                     )
                 ";
             } else {
                 $insert_asset = "
                     INSERT INTO assets (
-                        asset_name,
-                        model_id,
-                        serial_number,
-                        category_id,
-                        vendor_id,
-                        location_id,
-                        status_id,
-                        purchase_date,
-                        warranty_expiry,
-                        cost
+                        asset_name, model_id, serial_number, category_id, vendor_id,
+                        location_id, status_id, purchase_date, warranty_expiry, cost
                     ) VALUES (
-                        '$asset_name_safe',
-                        $model_id_sql,
-                        '$serial_number_safe',
-                        '$category_id_safe',
-                        $vendor_id_sql,
-                        '$location_id_safe',
-                        '$status_id_safe',
-                        $purchase_date_sql,
-                        $warranty_expiry_sql,
-                        $cost_sql
+                        '$asset_name_safe', $model_id_sql, '$serial_number_safe', '$category_id_safe', $vendor_id_sql,
+                        '$location_id_safe', '$status_id_safe', $purchase_date_sql, $warranty_expiry_sql, $cost_sql
                     )
                 ";
             }
@@ -275,43 +225,25 @@ if (isset($_POST['save_asset'])) {
 
             $asset_id = mysqli_insert_id($conn);
 
-            // -----------------------------
-            // UPLOAD DOCUMENTS INTO documents TABLE
-            // -----------------------------
             uploadDoc($conn, $asset_id, "sale_order", "SALE_ORDER");
             uploadDoc($conn, $asset_id, "invoice", "INVOICE");
             uploadDoc($conn, $asset_id, "warranty_doc", "WARRANTY");
 
-            // -----------------------------
-            // OPTIONAL ASSIGNMENT INSERT
-            // -----------------------------
             if ($assign_now) {
                 $asset_id_safe       = mysqli_real_escape_string($conn, $asset_id);
                 $user_id_safe        = mysqli_real_escape_string($conn, $user_id);
                 $assigned_date_safe  = mysqli_real_escape_string($conn, $assigned_date);
                 $assign_remarks_safe = mysqli_real_escape_string($conn, $assign_remarks);
 
-                // check if already assigned (safety)
                 $check_assign = mysqli_query($conn, "
-                    SELECT assignment_id 
-                    FROM asset_assignments 
-                    WHERE asset_id = '$asset_id_safe' AND returned_date IS NULL
-                    LIMIT 1
+                    SELECT assignment_id FROM asset_assignments 
+                    WHERE asset_id = '$asset_id_safe' AND returned_date IS NULL LIMIT 1
                 ");
 
                 if (!$check_assign || mysqli_num_rows($check_assign) == 0) {
                     $insert_assignment = "
-                        INSERT INTO asset_assignments (
-                            asset_id,
-                            user_id,
-                            assigned_date,
-                            remarks
-                        ) VALUES (
-                            '$asset_id_safe',
-                            '$user_id_safe',
-                            '$assigned_date_safe',
-                            '$assign_remarks_safe'
-                        )
+                        INSERT INTO asset_assignments (asset_id, user_id, assigned_date, remarks) 
+                        VALUES ('$asset_id_safe', '$user_id_safe', '$assigned_date_safe', '$assign_remarks_safe')
                     ";
 
                     if (!mysqli_query($conn, $insert_assignment)) {
@@ -321,7 +253,6 @@ if (isset($_POST['save_asset'])) {
             }
 
             mysqli_commit($conn);
-
             header("Location: asset_details.php?id=" . $asset_id);
             exit();
         } catch (Exception $e) {
@@ -357,37 +288,46 @@ include("../../includes/sidebar.php");
                         <input type="text" name="asset_name" class="form-control"
                             value="<?= htmlspecialchars($_POST['asset_name'] ?? '') ?>" required>
                     </div>
-                </div>
 
-                <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Serial Number <span class="text-danger">*</span></label>
                         <input type="text" name="serial_number" class="form-control"
                             value="<?= htmlspecialchars($_POST['serial_number'] ?? '') ?>" required>
                     </div>
-
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Purchase Date</label>
-                        <input type="date" name="purchase_date" class="form-control" id="purchase_date"
-                            value="<?= htmlspecialchars($_POST['purchase_date'] ?? '') ?>">
-                    </div>
                 </div>
 
                 <div class="row">
+                    <!-- MAIN CATEGORY -->
                     <div class="col-md-4 mb-3">
-                        <label class="form-label">Category <span class="text-danger">*</span></label>
-                        <select name="category_id" id="category_id" class="form-select" required>
-                            <option value="">Select Category</option>
+                        <label class="form-label">Main Category <span class="text-danger">*</span></label>
+                        <select name="main_category_id" id="main_category_id" class="form-select" required>
+                            <option value="">Select Main Category</option>
                             <?php
-                            mysqli_data_seek($categories, 0);
-                            while ($row = mysqli_fetch_assoc($categories)) {
-                                $selected = (($_POST['category_id'] ?? '') == $row['category_id']) ? 'selected' : '';
+                            mysqli_data_seek($main_categories, 0);
+                            while ($row = mysqli_fetch_assoc($main_categories)) {
+                                $selected = (($_POST['main_category_id'] ?? '') == $row['category_id']) ? 'selected' : '';
                                 echo "<option value='{$row['category_id']}' $selected>" . htmlspecialchars($row['category_name']) . "</option>";
                             }
                             ?>
                         </select>
                     </div>
 
+                    <!-- SUB CATEGORY -->
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Sub Category</label>
+                        <select name="sub_category_id" id="sub_category_id" class="form-select">
+                            <option value="">Select Subcategory</option>
+                            <?php
+                            mysqli_data_seek($sub_categories, 0);
+                            while ($row = mysqli_fetch_assoc($sub_categories)) {
+                                $selected = (($_POST['sub_category_id'] ?? '') == $row['category_id']) ? 'selected' : '';
+                                echo "<option value='{$row['category_id']}' data-parent='{$row['parent_id']}' $selected>" . htmlspecialchars($row['category_name']) . "</option>";
+                            }
+                            ?>
+                        </select>
+                    </div>
+
+                    <!-- MODEL -->
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Model</label>
                         <select name="model_id" id="model_id" class="form-select">
@@ -396,13 +336,34 @@ include("../../includes/sidebar.php");
                             mysqli_data_seek($models, 0);
                             while ($row = mysqli_fetch_assoc($models)) {
                                 $selected = (($_POST['model_id'] ?? '') == $row['model_id']) ? 'selected' : '';
-                                // We add a data attribute here to filter models by category in Javascript
                                 echo "<option value='{$row['model_id']}' data-category='{$row['category_id']}' $selected>" . htmlspecialchars($row['model_name']) . "</option>";
                             }
                             ?>
                         </select>
                     </div>
+                </div>
 
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Purchase Date</label>
+                        <input type="date" name="purchase_date" class="form-control" id="purchase_date"
+                            value="<?= htmlspecialchars($_POST['purchase_date'] ?? '') ?>">
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Warranty Expiry</label>
+                        <input type="date" name="warranty_expiry" id="warranty_expiry" class="form-control"
+                            value="<?= htmlspecialchars($_POST['warranty_expiry'] ?? '') ?>">
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Cost (₹)</label>
+                        <input type="number" step="0.01" min="0" name="cost" id="cost" class="form-control"
+                            value="<?= htmlspecialchars($_POST['cost'] ?? '') ?>">
+                    </div>
+                </div>
+
+                <div class="row">
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Vendor</label>
                         <select name="vendor_id" id="vendor_id" class="form-select">
@@ -416,9 +377,7 @@ include("../../includes/sidebar.php");
                             ?>
                         </select>
                     </div>
-                </div>
 
-                <div class="row">
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Location <span class="text-danger">*</span></label>
                         <select name="location_id" id="location_id" class="form-select" required>
@@ -452,20 +411,6 @@ include("../../includes/sidebar.php");
                         <small class="text-muted">
                             If you assign this asset immediately, status will automatically become <strong>Assigned</strong>.
                         </small>
-                    </div>
-
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Warranty Expiry</label>
-                        <input type="date" name="warranty_expiry" id="warranty_expiry" class="form-control"
-                            value="<?= htmlspecialchars($_POST['warranty_expiry'] ?? '') ?>">
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Cost (₹)</label>
-                        <input type="number" step="0.01" min="0" name="cost" id="cost" class="form-control"
-                            value="<?= htmlspecialchars($_POST['cost'] ?? '') ?>">
                     </div>
                 </div>
 
@@ -600,28 +545,75 @@ include("../../includes/sidebar.php");
 
 
         // ----------------------------------------------------
-        // NEW LOGIC: Category -> Model Dynamic Filtering
+        // NEW LOGIC: Main Category -> Sub Category -> Model Dynamic Filtering
         // ----------------------------------------------------
-        const categorySelect = document.getElementById("category_id");
+        const mainCatSelect = document.getElementById("main_category_id");
+        const subCatSelect = document.getElementById("sub_category_id");
         const modelSelect = document.getElementById("model_id");
 
-        // Store original model options so we can re-filter later
+        // Store original options so we can re-filter later
+        const allSubCats = Array.from(subCatSelect.options);
         const allModels = Array.from(modelSelect.options);
 
-        categorySelect.addEventListener('change', function() {
-            const selectedCategoryId = this.value;
+        // Fetch previous PHP POST values for validation failure re-rendering
+        const prevSub = "<?= htmlspecialchars($_POST['sub_category_id'] ?? '') ?>";
+        const prevModel = "<?= htmlspecialchars($_POST['model_id'] ?? '') ?>";
 
-            // Reset the Model dropdown to only contain the default option
+        function filterSubCategories() {
+            const parentId = mainCatSelect.value;
+
+            // Reset Subcategory Dropdown
+            subCatSelect.innerHTML = '<option value="">Select Subcategory</option>';
+
+            // Filter Subcategories where data-parent matches Main Category
+            allSubCats.forEach(option => {
+                if (option.value === "") return;
+                if (option.getAttribute('data-parent') === parentId) {
+                    subCatSelect.appendChild(option.cloneNode(true));
+                }
+            });
+
+            // Restore previous subcategory selection if it still exists in the new list
+            if (prevSub && Array.from(subCatSelect.options).some(opt => opt.value === prevSub)) {
+                subCatSelect.value = prevSub;
+            }
+
+            // Trigger Model filtering immediately after Category/Sub updates
+            filterModels();
+        }
+
+        function filterModels() {
+            const mainId = mainCatSelect.value;
+            const subId = subCatSelect.value;
+
+            // If subcategory is chosen, filter by subcategory. Otherwise, filter by main category.
+            const targetCategoryId = subId !== "" ? subId : mainId;
+
+            // Reset Model Dropdown
             modelSelect.innerHTML = '<option value="">Select Model</option>';
 
-            // Re-populate models that belong to the selected category
+            // Filter Models where data-category matches target Category ID
             allModels.forEach(option => {
-                if (option.value === "") return; // Skip the default option
-                if (selectedCategoryId === "" || option.getAttribute('data-category') === selectedCategoryId) {
+                if (option.value === "") return;
+                if (targetCategoryId === "" || option.getAttribute('data-category') === targetCategoryId) {
                     modelSelect.appendChild(option.cloneNode(true));
                 }
             });
-        });
+
+            // Restore previous model selection if it still exists in the new list
+            if (prevModel && Array.from(modelSelect.options).some(opt => opt.value === prevModel)) {
+                modelSelect.value = prevModel;
+            }
+        }
+
+        mainCatSelect.addEventListener('change', filterSubCategories);
+        subCatSelect.addEventListener('change', filterModels);
+
+        // Trigger filters on page load to set correct dropdown states
+        if (mainCatSelect.value !== "") {
+            filterSubCategories();
+        }
+
 
         // ----------------------------------------------------
         // NEW LOGIC: Model Auto-fill Data Fetching
