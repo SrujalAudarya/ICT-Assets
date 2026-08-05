@@ -7,7 +7,8 @@ include("../../config/db.php");
    HELPER FUNCTIONS
    ========================================================= */
 
-function parsePurchaseDate($rawDate) {
+function parsePurchaseDate($rawDate)
+{
     $rawDate = trim($rawDate);
     if ($rawDate === '') return null;
     if (preg_match('/^\d{2}-\d{2}-\d{4}$/', $rawDate)) {
@@ -32,7 +33,8 @@ function parsePurchaseDate($rawDate) {
     return null;
 }
 
-function parseCsvLine($line) {
+function parseCsvLine($line)
+{
     $line = trim($line);
     if ($line === '') return [];
     if (strpos($line, "\t") !== false) return str_getcsv($line, "\t");
@@ -40,7 +42,8 @@ function parseCsvLine($line) {
     else return str_getcsv($line, ",");
 }
 
-function getCategoryId($conn, $categoryName) {
+function getCategoryId($conn, $categoryName)
+{
     $categoryName = trim($categoryName);
     if ($categoryName === '') return null;
     $categoryNameEsc = mysqli_real_escape_string($conn, $categoryName);
@@ -53,7 +56,8 @@ function getCategoryId($conn, $categoryName) {
     return mysqli_insert_id($conn);
 }
 
-function getLocationId($conn, $deptName) {
+function getLocationId($conn, $deptName)
+{
     $deptName = trim($deptName);
     if ($deptName === '') return null;
     $deptNameEsc = mysqli_real_escape_string($conn, $deptName);
@@ -66,7 +70,8 @@ function getLocationId($conn, $deptName) {
     return mysqli_insert_id($conn);
 }
 
-function getModelId($conn, $modelName, $category_id = null, $vendor_id = null) {
+function getModelId($conn, $modelName, $category_id = null, $vendor_id = null)
+{
     $modelName = trim($modelName);
     if ($modelName === '') return null;
     $modelNameEsc = mysqli_real_escape_string($conn, $modelName);
@@ -81,7 +86,8 @@ function getModelId($conn, $modelName, $category_id = null, $vendor_id = null) {
     return mysqli_insert_id($conn);
 }
 
-function getVendorId($conn, $vendorName) {
+function getVendorId($conn, $vendorName)
+{
     $vendorName = trim($vendorName);
     if ($vendorName === '') return null;
     $vendorNameEsc = mysqli_real_escape_string($conn, $vendorName);
@@ -94,7 +100,8 @@ function getVendorId($conn, $vendorName) {
     return mysqli_insert_id($conn);
 }
 
-function getStatusId($conn, $hasAssignedUser = false) {
+function getStatusId($conn, $hasAssignedUser = false)
+{
     if ($hasAssignedUser) {
         $res = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name = 'Assigned' LIMIT 1");
         if ($res && mysqli_num_rows($res) > 0) {
@@ -141,7 +148,7 @@ if (isset($_POST['import_assets_excel'])) {
 
                 while (($line = fgets($handle)) !== false) {
                     $rowCount++;
-                    if ($rowCount == 1) continue; 
+                    if ($rowCount == 1) continue;
                     $line = trim($line);
                     if ($line === '') continue;
                     $row = parseCsvLine($line);
@@ -155,9 +162,11 @@ if (isset($_POST['import_assets_excel'])) {
                     $assetName        = trim($row[6] ?? '');
                     $purchaseDateRaw  = trim($row[7] ?? '');
 
-                    if ($assignedUserName === '' && $categoryName === '' && $serialNumber === '' &&
+                    if (
+                        $assignedUserName === '' && $categoryName === '' && $serialNumber === '' &&
                         $deptName === '' && $vendorName === '' && $modelName === '' &&
-                        $assetName === '' && $purchaseDateRaw === '') {
+                        $assetName === '' && $purchaseDateRaw === ''
+                    ) {
                         continue;
                     }
 
@@ -288,9 +297,9 @@ if ($model != "") {
    EXPORT LOGIC
    ========================================================= */
 if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel'])) {
-    
+
     $isExcel = ($_GET['export'] === 'excel');
-    
+
     $exportQuery = "
         SELECT 
             a.*,
@@ -313,22 +322,22 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel'])) {
         $where
         ORDER BY a.asset_id ASC
     ";
-    
+
     $exportResult = mysqli_query($conn, $exportQuery);
 
     if ($isExcel) {
         header('Content-Type: application/vnd.ms-excel; charset=utf-8');
         header('Content-Disposition: attachment; filename="Assets_Inventory_' . date('Y-m-d_H-i') . '.xls"');
-        $delimiter = "\t"; 
+        $delimiter = "\t";
     } else {
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="Assets_Inventory_' . date('Y-m-d_H-i') . '.csv"');
         $delimiter = ",";
     }
-    
+
     $output = fopen('php://output', 'w');
     fputcsv($output, ['Sr No', 'Asset Name', 'Serial No', 'Category', 'Model', 'Vendor', 'Status', 'Location', 'Assigned To', 'Purchase Date', 'Warranty Expiry Date'], $delimiter);
-    
+
     $sr = 1;
     while ($row = mysqli_fetch_assoc($exportResult)) {
         $purchaseDate = !empty($row['purchase_date']) ? date('d-m-Y', strtotime($row['purchase_date'])) : '-';
@@ -467,7 +476,7 @@ $exportExcelUrl = '?' . http_build_query($exportParams);
                 <i class="bi bi-arrows-collapse"></i> Toggle Filters
             </button>
         </div>
-        
+
         <div class="collapse show" id="filterPanel">
             <div class="card-body">
                 <form method="GET" class="row g-3">
@@ -567,7 +576,7 @@ $exportExcelUrl = '?' . http_build_query($exportParams);
                             <?php while ($row = mysqli_fetch_assoc($result)): ?>
                                 <tr>
                                     <td class="ps-3 text-muted fw-bold"><?= $sr++ ?></td>
-                                    
+
                                     <td class="text-center">
                                         <?php if (!empty($row['model_image'])): ?>
                                             <div class="bg-white border rounded p-1 shadow-sm d-inline-block" style="width: 45px; height: 45px;">
@@ -611,7 +620,7 @@ $exportExcelUrl = '?' . http_build_query($exportParams);
                                             <?= htmlspecialchars($row['status_name'] ?? 'N/A') ?>
                                         </span>
                                         <div class="small text-dark fw-semibold">
-                                            <i class="bi bi-geo-alt text-danger"></i> 
+                                            <i class="bi bi-geo-alt text-danger"></i>
                                             <?= htmlspecialchars($row['dept_name'] ?? 'N/A') ?>
                                             <?= !empty($row['floor']) ? " <span class='text-muted'>({$row['floor']})</span>" : "" ?>
                                         </div>
@@ -623,15 +632,15 @@ $exportExcelUrl = '?' . http_build_query($exportParams);
                                         <?php else: ?>
                                             <span class="text-muted small"><i class="bi bi-dash-circle me-1"></i>Not Assigned</span>
                                         <?php endif; ?>
-                                        
+
                                         <div class="small text-muted mt-1 d-flex align-items-center">
                                             <span title="Purchase Date"><i class="bi bi-calendar3 me-1"></i><?= !empty($row['purchase_date']) ? date('d M Y', strtotime($row['purchase_date'])) : '-' ?></span>
-                                            
-                                            <?php 
+
+                                            <?php
                                             if (!empty($row['warranty_expiry'])) {
                                                 $exp_time = strtotime($row['warranty_expiry']);
                                                 $days_left = floor(($exp_time - time()) / (60 * 60 * 24));
-                                                
+
                                                 if ($days_left < 0) {
                                                     echo "<span class='badge bg-danger bg-opacity-10 text-danger border border-danger ms-2' title='Warranty Expired'><i class='bi bi-shield-x'></i> Expired</span>";
                                                 } elseif ($days_left <= 30) {
@@ -670,7 +679,7 @@ $exportExcelUrl = '?' . http_build_query($exportParams);
                 </table>
             </div>
         </div>
-        
+
         <!-- PAGINATION -->
         <?php
         $countQuery = "
@@ -697,33 +706,33 @@ $exportExcelUrl = '?' . http_build_query($exportParams);
         ?>
 
         <?php if ($totalPages > 0): ?>
-        <div class="card-footer bg-white border-0 py-3">
-            <div class="d-flex flex-column flex-md-row justify-content-between align-items-center">
-                <div class="text-muted small mb-2 mb-md-0">
-                    Showing <span class="fw-bold text-dark"><?= $offset + 1 ?></span> to <span class="fw-bold text-dark"><?= min($offset + $limit, $totalRows) ?></span> of <span class="fw-bold text-dark"><?= $totalRows ?></span> entries
+            <div class="card-footer bg-white border-0 py-3">
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-center">
+                    <div class="text-muted small mb-2 mb-md-0">
+                        Showing <span class="fw-bold text-dark"><?= $offset + 1 ?></span> to <span class="fw-bold text-dark"><?= min($offset + $limit, $totalRows) ?></span> of <span class="fw-bold text-dark"><?= $totalRows ?></span> entries
+                    </div>
+                    <?php if ($totalPages > 1): ?>
+                        <nav aria-label="Page navigation">
+                            <ul class="pagination pagination-sm mb-0 shadow-sm">
+                                <li class="page-item <?= ($page <= 1) ? 'disabled' : '' ?>">
+                                    <a class="page-link text-dark" href="?page=<?= $page - 1 ?>&search=<?= urlencode($search) ?>&category=<?= urlencode($category) ?>&status=<?= urlencode($status) ?>&location=<?= urlencode($location) ?>&model=<?= urlencode($model) ?>">Previous</a>
+                                </li>
+                                <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                                    <li class="page-item <?= ($page == $i) ? 'active' : '' ?>">
+                                        <a class="page-link <?= ($page == $i) ? 'bg-primary border-primary' : 'text-dark' ?>"
+                                            href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&category=<?= urlencode($category) ?>&status=<?= urlencode($status) ?>&location=<?= urlencode($location) ?>&model=<?= urlencode($model) ?>">
+                                            <?= $i ?>
+                                        </a>
+                                    </li>
+                                <?php endfor; ?>
+                                <li class="page-item <?= ($page >= $totalPages) ? 'disabled' : '' ?>">
+                                    <a class="page-link text-dark" href="?page=<?= $page + 1 ?>&search=<?= urlencode($search) ?>&category=<?= urlencode($category) ?>&status=<?= urlencode($status) ?>&location=<?= urlencode($location) ?>&model=<?= urlencode($model) ?>">Next</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    <?php endif; ?>
                 </div>
-                <?php if ($totalPages > 1): ?>
-                <nav aria-label="Page navigation">
-                    <ul class="pagination pagination-sm mb-0 shadow-sm">
-                        <li class="page-item <?= ($page <= 1) ? 'disabled' : '' ?>">
-                            <a class="page-link text-dark" href="?page=<?= $page - 1 ?>&search=<?= urlencode($search) ?>&category=<?= urlencode($category) ?>&status=<?= urlencode($status) ?>&location=<?= urlencode($location) ?>&model=<?= urlencode($model) ?>">Previous</a>
-                        </li>
-                        <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                            <li class="page-item <?= ($page == $i) ? 'active' : '' ?>">
-                                <a class="page-link <?= ($page == $i) ? 'bg-primary border-primary' : 'text-dark' ?>" 
-                                   href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&category=<?= urlencode($category) ?>&status=<?= urlencode($status) ?>&location=<?= urlencode($location) ?>&model=<?= urlencode($model) ?>">
-                                    <?= $i ?>
-                                </a>
-                            </li>
-                        <?php endfor; ?>
-                        <li class="page-item <?= ($page >= $totalPages) ? 'disabled' : '' ?>">
-                            <a class="page-link text-dark" href="?page=<?= $page + 1 ?>&search=<?= urlencode($search) ?>&category=<?= urlencode($category) ?>&status=<?= urlencode($status) ?>&location=<?= urlencode($location) ?>&model=<?= urlencode($model) ?>">Next</a>
-                        </li>
-                    </ul>
-                </nav>
-                <?php endif; ?>
             </div>
-        </div>
         <?php endif; ?>
     </div>
 
@@ -731,82 +740,107 @@ $exportExcelUrl = '?' . http_build_query($exportParams);
     <?php
     $cat_hierarchy = [];
     $all_cats_query = mysqli_query($conn, "SELECT category_id, parent_id FROM asset_categories");
-    while($cat_row = mysqli_fetch_assoc($all_cats_query)) {
+    while ($cat_row = mysqli_fetch_assoc($all_cats_query)) {
         $id = $cat_row['category_id'];
         $parent = (!empty($cat_row['parent_id']) && $cat_row['parent_id'] > 0) ? $cat_row['parent_id'] : $id;
-        
+
         if (!isset($cat_hierarchy[$parent])) {
             $cat_hierarchy[$parent] = [];
         }
-        $cat_hierarchy[$parent][] = (string)$id; 
+        $cat_hierarchy[$parent][] = (string)$id;
     }
     ?>
 
     <script>
-    function copyToClipboard(text) {
-        navigator.clipboard.writeText(text).then(function() {
-            alert('Copied Serial Number: ' + text);
-        }, function(err) {
-            console.error('Could not copy text: ', err);
-        });
-    }
-
-    // Dynamic Filter for Models based on Category hierarchy
-    document.addEventListener("DOMContentLoaded", function() {
-        const catSelect = document.getElementById("filter_category");
-        const modelSelect = document.getElementById("filter_model");
-        
-        if (catSelect && modelSelect) {
-            const allModels = Array.from(modelSelect.options);
-            const catHierarchy = <?= json_encode($cat_hierarchy) ?>;
-
-            function filterModels() {
-                const selectedCat = catSelect.value;
-                const currentModel = modelSelect.value; 
-
-                modelSelect.innerHTML = '<option value="">All Models</option>';
-
-                let allowedCats = [];
-                if (selectedCat !== "") {
-                    // Get all subcategories tied to this main category
-                    allowedCats = catHierarchy[selectedCat] || [selectedCat];
-                    if (!allowedCats.includes(selectedCat)) allowedCats.push(selectedCat);
-                }
-
-                allModels.forEach(option => {
-                    if (option.value === "") return; 
-                    
-                    const modelCat = option.getAttribute('data-category');
-                    // If no category selected, show all. If category selected, check if it's in the allowed hierarchy list
-                    if (selectedCat === "" || allowedCats.includes(modelCat)) {
-                        modelSelect.appendChild(option.cloneNode(true));
-                    }
+        function copyToClipboard(text) {
+            // Modern approach (Requires HTTPS or localhost)
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(function() {
+                    alert('Copied Serial Number: ' + text);
+                }).catch(function(err) {
+                    console.error('Could not copy text: ', err);
                 });
+            } else {
+                // Fallback approach (Works on standard HTTP)
+                let textArea = document.createElement("textarea");
+                textArea.value = text;
 
-                // Keep the previously selected model if it still matches the filter
-                if (currentModel && Array.from(modelSelect.options).some(opt => opt.value === currentModel)) {
-                    modelSelect.value = currentModel;
+                // Prevent scrolling to the bottom of the page
+                textArea.style.position = "fixed";
+                textArea.style.left = "-999999px";
+                textArea.style.top = "-999999px";
+
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+
+                try {
+                    document.execCommand('copy');
+                    alert('Copied Serial Number: ' + text);
+                } catch (err) {
+                    console.error('Fallback copy failed: ', err);
+                    alert('Failed to copy. Please copy manually.');
                 }
-            }
 
-            catSelect.addEventListener('change', filterModels);
-
-            // Trigger immediately if a category was already selected via PHP GET request
-            if(catSelect.value !== "") {
-                const urlParams = new URLSearchParams(window.location.search);
-                const initialModel = urlParams.get('model');
-                filterModels();
-                if(initialModel) {
-                    modelSelect.value = initialModel;
-                }
+                textArea.remove();
             }
         }
-    });
+        // Dynamic Filter for Models based on Category hierarchy
+        document.addEventListener("DOMContentLoaded", function() {
+            const catSelect = document.getElementById("filter_category");
+            const modelSelect = document.getElementById("filter_model");
+
+            if (catSelect && modelSelect) {
+                const allModels = Array.from(modelSelect.options);
+                const catHierarchy = <?= json_encode($cat_hierarchy) ?>;
+
+                function filterModels() {
+                    const selectedCat = catSelect.value;
+                    const currentModel = modelSelect.value;
+
+                    modelSelect.innerHTML = '<option value="">All Models</option>';
+
+                    let allowedCats = [];
+                    if (selectedCat !== "") {
+                        // Get all subcategories tied to this main category
+                        allowedCats = catHierarchy[selectedCat] || [selectedCat];
+                        if (!allowedCats.includes(selectedCat)) allowedCats.push(selectedCat);
+                    }
+
+                    allModels.forEach(option => {
+                        if (option.value === "") return;
+
+                        const modelCat = option.getAttribute('data-category');
+                        // If no category selected, show all. If category selected, check if it's in the allowed hierarchy list
+                        if (selectedCat === "" || allowedCats.includes(modelCat)) {
+                            modelSelect.appendChild(option.cloneNode(true));
+                        }
+                    });
+
+                    // Keep the previously selected model if it still matches the filter
+                    if (currentModel && Array.from(modelSelect.options).some(opt => opt.value === currentModel)) {
+                        modelSelect.value = currentModel;
+                    }
+                }
+
+                catSelect.addEventListener('change', filterModels);
+
+                // Trigger immediately if a category was already selected via PHP GET request
+                if (catSelect.value !== "") {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const initialModel = urlParams.get('model');
+                    filterModels();
+                    if (initialModel) {
+                        modelSelect.value = initialModel;
+                    }
+                }
+            }
+        });
     </script>
 
     <div class="mt-3">
         <div class="alert alert-light border shadow-sm text-muted small">
-            <i class="bi bi-info-circle-fill me-2 text-primary"></i> 
+            <i class="bi bi-info-circle-fill me-2 text-primary"></i>
             <strong>CSV format for import:</strong> Asset Name, Serial Number, Category, Model Name, Vendor, Status, Department, Assigned User Name, Purchase Date
         </div>
     </div>
