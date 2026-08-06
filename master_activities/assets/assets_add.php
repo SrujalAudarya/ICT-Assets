@@ -403,8 +403,11 @@ include("../../includes/sidebar.php");
                             <?php
                             mysqli_data_seek($statuses, 0);
                             while ($row = mysqli_fetch_assoc($statuses)) {
-                                $selected = (($_POST['status_id'] ?? '') == $row['status_id']) ? 'selected' : '';
-                                echo "<option value='{$row['status_id']}' $selected>" . htmlspecialchars($row['status_name']) . "</option>";
+                                // ONLY SHOW 'Assigned' AND 'Available'
+                                if (in_array($row['status_name'], ['Assigned', 'Available'])) {
+                                    $selected = (($_POST['status_id'] ?? '') == $row['status_id']) ? 'selected' : '';
+                                    echo "<option value='{$row['status_id']}' $selected>" . htmlspecialchars($row['status_name']) . "</option>";
+                                }
                             }
                             ?>
                         </select>
