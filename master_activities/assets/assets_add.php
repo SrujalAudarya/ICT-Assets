@@ -1,4 +1,5 @@
 <?php
+ob_start();
 global $conn;
 include("../../includes/auth.php");
 include("../../config/db.php");
@@ -89,9 +90,222 @@ function uploadDoc($conn, $asset_id, $file_input, $type)
 }
 
 /* =========================================================
+   CSV IMPORT HELPER FUNCTIONS
+   ========================================================= */
+function parsePurchaseDate($rawDate) {
+    $rawDate = trim($rawDate);
+    if ($rawDate === '') return null;
+    if (preg_match('/^\d{2}-\d{2}-\d{4}$/', $rawDate)) {
+        [$dd, $mm, $yy] = explode('-', $rawDate);
+        if (checkdate((int)$mm, (int)$dd, (int)$yy)) return "$yy-$mm-$dd";
+    }
+    if (preg_match('/^\d{2}\.\d{2}\.\d{4}$/', $rawDate)) {
+        [$dd, $mm, $yy] = explode('.', $rawDate);
+        if (checkdate((int)$mm, (int)$dd, (int)$yy)) return "$yy-$mm-$dd";
+    }
+    if (preg_match('/^\d{2}\.\d{2}\.\d{2}$/', $rawDate)) {
+        [$dd, $mm, $yy] = explode('.', $rawDate);
+        $yy = '20' . $yy;
+        if (checkdate((int)$mm, (int)$dd, (int)$yy)) return "$yy-$mm-$dd";
+    }
+    if (preg_match('/^\d{2}-\d{2}-\d{2}$/', $rawDate)) {
+        [$dd, $mm, $yy] = explode('-', $rawDate);
+        $yy = '20' . $yy;
+        if (checkdate((int)$mm, (int)$dd, (int)$yy)) return "$yy-$mm-$dd";
+    }
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawDate)) return $rawDate;
+    return null;
+}
+
+function parseCsvLine($line) {
+    $line = trim($line);
+    if ($line === '') return [];
+    if (strpos($line, "\t") !== false) return str_getcsv($line, "\t");
+    elseif (strpos($line, ";") !== false) return str_getcsv($line, ";");
+    else return str_getcsv($line, ",");
+}
+
+function getCsvCategoryId($conn, $categoryName) {
+    $categoryName = trim($categoryName);
+    if ($categoryName === '') return null;
+    $categoryNameEsc = mysqli_real_escape_string($conn, $categoryName);
+    $res = mysqli_query($conn, "SELECT category_id FROM asset_categories WHERE category_name = '$categoryNameEsc' LIMIT 1");
+    if ($res && mysqli_num_rows($res) > 0) return (int)mysqli_fetch_assoc($res)['category_id'];
+    mysqli_query($conn, "INSERT INTO asset_categories (category_name) VALUES ('$categoryNameEsc')");
+    return mysqli_insert_id($conn);
+}
+
+function getCsvLocationId($conn, $deptName) {
+    $deptName = trim($deptName);
+    if ($deptName === '') return null;
+    $deptNameEsc = mysqli_real_escape_string($conn, $deptName);
+    $res = mysqli_query($conn, "SELECT location_id FROM locations WHERE dept_name = '$deptNameEsc' LIMIT 1");
+    if ($res && mysqli_num_rows($res) > 0) return (int)mysqli_fetch_assoc($res)['location_id'];
+    mysqli_query($conn, "INSERT INTO locations (dept_name) VALUES ('$deptNameEsc')");
+    return mysqli_insert_id($conn);
+}
+
+function getCsvModelId($conn, $modelName, $category_id = null, $vendor_id = null) {
+    $modelName = trim($modelName);
+    if ($modelName === '') return null;
+    $modelNameEsc = mysqli_real_escape_string($conn, $modelName);
+    $res = mysqli_query($conn, "SELECT model_id FROM asset_models WHERE model_name = '$modelNameEsc' LIMIT 1");
+    if ($res && mysqli_num_rows($res) > 0) return (int)mysqli_fetch_assoc($res)['model_id'];
+    $categorySql = $category_id ? $category_id : "NULL";
+    $vendorSql   = $vendor_id ? $vendor_id : "NULL";
+    mysqli_query($conn, "INSERT INTO asset_models (model_name, category_id, vendor_id) VALUES ('$modelNameEsc', $categorySql, $vendorSql)");
+    return mysqli_insert_id($conn);
+}
+
+function getCsvVendorId($conn, $vendorName) {
+    $vendorName = trim($vendorName);
+    if ($vendorName === '') return null;
+    $vendorNameEsc = mysqli_real_escape_string($conn, $vendorName);
+    $res = mysqli_query($conn, "SELECT vendor_id FROM vendors WHERE vendor_name = '$vendorNameEsc' LIMIT 1");
+    if ($res && mysqli_num_rows($res) > 0) return (int)mysqli_fetch_assoc($res)['vendor_id'];
+    mysqli_query($conn, "INSERT INTO vendors (vendor_name) VALUES ('$vendorNameEsc')");
+    return mysqli_insert_id($conn);
+}
+
+// RESTRICTED TO ONLY "ASSIGNED" OR "AVAILABLE"
+function getCsvStatusId($conn, $hasAssignedUser = false) {
+    if ($hasAssignedUser) {
+        $res = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name = 'Assigned' LIMIT 1");
+        if ($res && mysqli_num_rows($res) > 0) return (int)mysqli_fetch_assoc($res)['status_id'];
+    }
+    $res = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name = 'Available' LIMIT 1");
+    if ($res && mysqli_num_rows($res) > 0) return (int)mysqli_fetch_assoc($res)['status_id'];
+    return null;
+}
+
+
+/* =========================================================
+   HANDLE CSV IMPORT LOGIC
+   ========================================================= */
+$error = "";
+$success_msg = "";
+
+if (isset($_POST['import_assets_excel'])) {
+    if (!empty($_FILES['asset_excel_file']['name'])) {
+        $fileExt = strtolower(pathinfo($_FILES['asset_excel_file']['name'], PATHINFO_EXTENSION));
+
+        if ($fileExt !== 'csv') {
+            $error = "Please upload only a CSV file.";
+        } else {
+            $fileName = $_FILES['asset_excel_file']['tmp_name'];
+            $handle = fopen($fileName, "r");
+
+            if ($handle !== false) {
+                $rowCount = 0;
+                $successCount = 0;
+                $failCount = 0;
+                $failedRows = [];
+
+                while (($line = fgets($handle)) !== false) {
+                    $rowCount++;
+                    if ($rowCount == 1) continue; // Skip header
+
+                    $line = trim($line);
+                    if ($line === '') continue;
+                    $row = parseCsvLine($line);
+
+                    $assignedUserName = trim($row[0] ?? '');
+                    $categoryName     = trim($row[1] ?? '');
+                    $serialNumber     = trim($row[2] ?? '');
+                    $deptName         = trim($row[3] ?? '');
+                    $vendorName       = trim($row[4] ?? '');
+                    $modelName        = trim($row[5] ?? '');
+                    $assetName        = trim($row[6] ?? '');
+                    $purchaseDateRaw  = trim($row[7] ?? '');
+
+                    if ($assignedUserName === '' && $categoryName === '' && $serialNumber === '' &&
+                        $deptName === '' && $vendorName === '' && $modelName === '' &&
+                        $assetName === '' && $purchaseDateRaw === '') {
+                        continue;
+                    }
+
+                    if ($serialNumber === '' || $assetName === '') {
+                        $failCount++;
+                        $failedRows[] = "Row $rowCount: Validation Failed (Missing Serial or Asset Name)";
+                        continue;
+                    }
+
+                    $assignedUserNameEsc = mysqli_real_escape_string($conn, $assignedUserName);
+                    $serialNumberEsc     = mysqli_real_escape_string($conn, $serialNumber);
+                    $assetNameEsc        = mysqli_real_escape_string($conn, $assetName);
+
+                    $dupRes = mysqli_query($conn, "SELECT asset_id FROM assets WHERE serial_number = '$serialNumberEsc' LIMIT 1");
+                    if ($dupRes && mysqli_num_rows($dupRes) > 0) {
+                        $failCount++;
+                        $failedRows[] = "Row $rowCount: Duplicate serial number ($serialNumber)";
+                        continue;
+                    }
+
+                    $category_id = getCsvCategoryId($conn, $categoryName);
+                    $vendor_id   = getCsvVendorId($conn, $vendorName);
+                    $location_id = getCsvLocationId($conn, $deptName);
+                    $model_id    = getCsvModelId($conn, $modelName, $category_id, $vendor_id);
+                    $status_id   = getCsvStatusId($conn, !empty($assignedUserName));
+
+                    $parsedDate = parsePurchaseDate($purchaseDateRaw);
+                    $purchaseDateSql = $parsedDate ? "'$parsedDate'" : "NULL";
+
+                    $insertAsset = "
+                        INSERT INTO assets (
+                            asset_name, model_id, serial_number, category_id, vendor_id, location_id, status_id, purchase_date, cost
+                        ) VALUES (
+                            '$assetNameEsc', " . ($model_id ? $model_id : "NULL") . ", '$serialNumberEsc',
+                            " . ($category_id ? $category_id : "NULL") . ", " . ($vendor_id ? $vendor_id : "NULL") . ",
+                            " . ($location_id ? $location_id : "NULL") . ", " . ($status_id ? $status_id : "NULL") . ",
+                            $purchaseDateSql, 0
+                        )";
+
+                    if (!mysqli_query($conn, $insertAsset)) {
+                        $failCount++;
+                        $failedRows[] = "Row $rowCount: Asset insert failed - " . mysqli_error($conn);
+                        continue;
+                    }
+
+                    $asset_id = mysqli_insert_id($conn);
+
+                    if ($assignedUserName !== '') {
+                        $userRes = mysqli_query($conn, "SELECT user_id FROM users WHERE name = '$assignedUserNameEsc' LIMIT 1");
+
+                        if ($userRes && mysqli_num_rows($userRes) > 0) {
+                            $userRow = mysqli_fetch_assoc($userRes);
+                            $user_id = (int)$userRow['user_id'];
+                            $assignQuery = "
+                                INSERT INTO asset_assignments (asset_id, user_id, assigned_date, returned_date, remarks) 
+                                VALUES ($asset_id, $user_id, CURDATE(), NULL, NULL)";
+
+                            if (!mysqli_query($conn, $assignQuery)) {
+                                $failedRows[] = "Row $rowCount: Asset inserted but assignment failed - " . mysqli_error($conn);
+                            }
+                        } else {
+                            $failedRows[] = "Row $rowCount: Asset inserted but user not found for assignment ($assignedUserName)";
+                        }
+                    }
+                    $successCount++;
+                }
+                fclose($handle);
+                $success_msg = "Import completed successfully. Assets Added: $successCount, Failed: $failCount";
+
+                if (!empty($failedRows)) {
+                    $error = implode("<br>", $failedRows);
+                }
+            } else {
+                $error = "Unable to open uploaded CSV file.";
+            }
+        }
+    } else {
+        $error = "Please select a CSV file.";
+    }
+}
+
+
+/* =========================================================
    FETCH DROPDOWNS
    ========================================================= */
-// FIX APPLIED HERE: Fetch using 0 OR NULL for Main Categories[cite: 2]
 $main_categories = mysqli_query($conn, "SELECT category_id, category_name FROM asset_categories WHERE parent_id = 0 OR parent_id IS NULL ORDER BY category_name ASC");
 $sub_categories  = mysqli_query($conn, "SELECT category_id, category_name, parent_id FROM asset_categories WHERE parent_id > 0 ORDER BY category_name ASC");
 
@@ -112,10 +326,8 @@ if ($assigned_status_q && mysqli_num_rows($assigned_status_q) > 0) {
 }
 
 /* =========================================================
-   HANDLE FORM SUBMIT
+   HANDLE SINGLE FORM SUBMIT
    ========================================================= */
-$error = "";
-
 if (isset($_POST['save_asset'])) {
 
     $asset_name      = trim($_POST['asset_name'] ?? '');
@@ -266,41 +478,90 @@ include("../../includes/header.php");
 include("../../includes/sidebar.php");
 ?>
 
-<div class="container mt-4">
-    <div class="card shadow-sm">
-        <div class="card-header bg-primary text-white">
-            <h4 class="mb-0">Add New Asset & Procurement Documents</h4>
+<div class="container mt-4 mb-5">
+    
+    <!-- PAGE HEADER -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="mb-0 text-dark"><i class="bi bi-plus-circle-fill text-primary me-2"></i> Add Assets</h3>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0 mt-1">
+                    <li class="breadcrumb-item"><a href="assets_list.php" class="text-decoration-none">Assets Inventory</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Add New</li>
+                </ol>
+            </nav>
         </div>
-        <div class="card-body">
+        <a href="assets_list.php" class="btn btn-secondary shadow-sm fw-bold">
+            <i class="bi bi-arrow-left me-1"></i> Back to List
+        </a>
+    </div>
 
-            <?php if ($error != ""): ?>
-                <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
-            <?php endif; ?>
+    <!-- GLOBAL MESSAGES -->
+    <?php if ($error != ""): ?>
+        <div class="alert alert-danger shadow-sm border-0 d-flex align-items-center">
+            <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i> 
+            <div><?= $error ?></div>
+        </div>
+    <?php endif; ?>
+    
+    <?php if ($success_msg != ""): ?>
+        <div class="alert alert-success shadow-sm border-0 d-flex align-items-center">
+            <i class="bi bi-check-circle-fill me-2 fs-5"></i> 
+            <div><?= $success_msg ?></div>
+        </div>
+    <?php endif; ?>
+
+    <!-- 1. BULK IMPORT CSV CARD -->
+    <div class="card shadow-sm border-0 border-top border-success border-4 mb-4">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0 text-dark fw-bold"><i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i> Bulk Import via CSV</h5>
+        </div>
+        <div class="card-body bg-light">
+            <form method="post" enctype="multipart/form-data" class="d-flex flex-column flex-md-row align-items-md-center gap-3">
+                <div class="flex-grow-1">
+                    <input type="file" name="asset_excel_file" class="form-control shadow-sm" accept=".csv" required>
+                </div>
+                <button type="submit" name="import_assets_excel" class="btn btn-success fw-bold shadow-sm px-4">
+                    <i class="bi bi-upload me-1"></i> Upload & Import
+                </button>
+            </form>
+            <div class="mt-3 text-muted small">
+                <i class="bi bi-info-circle-fill text-primary me-1"></i> <strong>Required CSV Column Order:</strong> Assigned User, Category, Serial Number, Department, Vendor, Model, Asset Name, Purchase Date (DD-MM-YYYY)
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. SINGLE ASSET FORM CARD -->
+    <div class="card shadow-sm border-0 border-top border-primary border-4">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0 text-dark fw-bold"><i class="bi bi-pc-display me-2 text-primary"></i> Add Single Asset</h5>
+        </div>
+        <div class="card-body p-4 bg-white">
 
             <form method="post" enctype="multipart/form-data">
 
                 <!-- BASIC INFORMATION -->
-                <h5 class="text-primary border-bottom pb-2 mb-3">Basic Information</h5>
+                <h6 class="text-primary fw-bold text-uppercase mb-3"><i class="bi bi-info-square me-1"></i> Basic Information</h6>
 
-                <div class="row">
+                <div class="row mb-4">
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Asset Name <span class="text-danger">*</span></label>
-                        <input type="text" name="asset_name" class="form-control"
+                        <label class="form-label fw-bold">Asset Name <span class="text-danger">*</span></label>
+                        <input type="text" name="asset_name" class="form-control shadow-sm"
                             value="<?= htmlspecialchars($_POST['asset_name'] ?? '') ?>" required>
                     </div>
 
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Serial Number <span class="text-danger">*</span></label>
-                        <input type="text" name="serial_number" class="form-control"
+                        <label class="form-label fw-bold">Serial Number <span class="text-danger">*</span></label>
+                        <input type="text" name="serial_number" class="form-control text-uppercase shadow-sm"
                             value="<?= htmlspecialchars($_POST['serial_number'] ?? '') ?>" required>
                     </div>
                 </div>
 
-                <div class="row">
+                <div class="row mb-4">
                     <!-- MAIN CATEGORY -->
                     <div class="col-md-4 mb-3">
-                        <label class="form-label">Main Category <span class="text-danger">*</span></label>
-                        <select name="main_category_id" id="main_category_id" class="form-select" required>
+                        <label class="form-label fw-bold">Main Category <span class="text-danger">*</span></label>
+                        <select name="main_category_id" id="main_category_id" class="form-select shadow-sm" required>
                             <option value="">Select Main Category</option>
                             <?php
                             mysqli_data_seek($main_categories, 0);
@@ -314,8 +575,8 @@ include("../../includes/sidebar.php");
 
                     <!-- SUB CATEGORY -->
                     <div class="col-md-4 mb-3">
-                        <label class="form-label">Sub Category</label>
-                        <select name="sub_category_id" id="sub_category_id" class="form-select">
+                        <label class="form-label fw-bold">Sub Category</label>
+                        <select name="sub_category_id" id="sub_category_id" class="form-select shadow-sm">
                             <option value="">Select Subcategory</option>
                             <?php
                             mysqli_data_seek($sub_categories, 0);
@@ -329,8 +590,8 @@ include("../../includes/sidebar.php");
 
                     <!-- MODEL -->
                     <div class="col-md-4 mb-3">
-                        <label class="form-label">Model</label>
-                        <select name="model_id" id="model_id" class="form-select">
+                        <label class="form-label fw-bold">Model</label>
+                        <select name="model_id" id="model_id" class="form-select shadow-sm">
                             <option value="">Select Model</option>
                             <?php
                             mysqli_data_seek($models, 0);
@@ -343,30 +604,30 @@ include("../../includes/sidebar.php");
                     </div>
                 </div>
 
-                <div class="row">
+                <div class="row mb-4">
                     <div class="col-md-4 mb-3">
-                        <label class="form-label">Purchase Date</label>
-                        <input type="date" name="purchase_date" class="form-control" id="purchase_date"
+                        <label class="form-label fw-bold">Purchase Date</label>
+                        <input type="date" name="purchase_date" class="form-control shadow-sm" id="purchase_date"
                             value="<?= htmlspecialchars($_POST['purchase_date'] ?? '') ?>">
                     </div>
 
                     <div class="col-md-4 mb-3">
-                        <label class="form-label">Warranty Expiry</label>
-                        <input type="date" name="warranty_expiry" id="warranty_expiry" class="form-control"
+                        <label class="form-label fw-bold">Warranty Expiry</label>
+                        <input type="date" name="warranty_expiry" id="warranty_expiry" class="form-control shadow-sm"
                             value="<?= htmlspecialchars($_POST['warranty_expiry'] ?? '') ?>">
                     </div>
 
                     <div class="col-md-4 mb-3">
-                        <label class="form-label">Cost (₹)</label>
-                        <input type="number" step="0.01" min="0" name="cost" id="cost" class="form-control"
+                        <label class="form-label fw-bold">Cost (₹)</label>
+                        <input type="number" step="0.01" min="0" name="cost" id="cost" class="form-control shadow-sm"
                             value="<?= htmlspecialchars($_POST['cost'] ?? '') ?>">
                     </div>
                 </div>
 
-                <div class="row">
+                <div class="row mb-4">
                     <div class="col-md-4 mb-3">
-                        <label class="form-label">Vendor</label>
-                        <select name="vendor_id" id="vendor_id" class="form-select">
+                        <label class="form-label fw-bold">Vendor</label>
+                        <select name="vendor_id" id="vendor_id" class="form-select shadow-sm">
                             <option value="">Select Vendor</option>
                             <?php
                             mysqli_data_seek($vendors, 0);
@@ -379,8 +640,8 @@ include("../../includes/sidebar.php");
                     </div>
 
                     <div class="col-md-4 mb-3">
-                        <label class="form-label">Location <span class="text-danger">*</span></label>
-                        <select name="location_id" id="location_id" class="form-select" required>
+                        <label class="form-label fw-bold">Location <span class="text-danger">*</span></label>
+                        <select name="location_id" id="location_id" class="form-select shadow-sm" required>
                             <option value="">Select Location</option>
                             <?php
                             mysqli_data_seek($locations, 0);
@@ -397,13 +658,13 @@ include("../../includes/sidebar.php");
                     </div>
 
                     <div class="col-md-4 mb-3">
-                        <label class="form-label">Status <span class="text-danger">*</span></label>
-                        <select name="status_id" id="status_id" class="form-select" required>
+                        <label class="form-label fw-bold">Status <span class="text-danger">*</span></label>
+                        <select name="status_id" id="status_id" class="form-select shadow-sm" required>
                             <option value="">Select Status</option>
                             <?php
                             mysqli_data_seek($statuses, 0);
                             while ($row = mysqli_fetch_assoc($statuses)) {
-                                // ONLY SHOW 'Assigned' AND 'Available'
+                                // ONLY SHOW "Assigned" and "Available"
                                 if (in_array($row['status_name'], ['Assigned', 'Available'])) {
                                     $selected = (($_POST['status_id'] ?? '') == $row['status_id']) ? 'selected' : '';
                                     echo "<option value='{$row['status_id']}' $selected>" . htmlspecialchars($row['status_name']) . "</option>";
@@ -412,53 +673,50 @@ include("../../includes/sidebar.php");
                             ?>
                         </select>
                         <small class="text-muted">
-                            If you assign this asset immediately, status will automatically become <strong>Assigned</strong>.
+                            If you assign this below, status becomes <strong>Assigned</strong> automatically.
                         </small>
                     </div>
                 </div>
 
                 <!-- PROCUREMENT DOCUMENTS -->
-                <h5 class="text-primary border-bottom pb-2 mb-3 mt-4">Procurement Documents</h5>
+                <h6 class="text-info fw-bold text-uppercase mb-3 border-top pt-4"><i class="bi bi-folder2-open me-1"></i> Procurement Documents</h6>
 
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Sale Order</label>
-                        <input type="file" name="sale_order" class="form-control">
+                <div class="row bg-light p-3 rounded mb-4 shadow-sm border border-light">
+                    <div class="col-md-4 mb-3 mb-md-0">
+                        <label class="form-label fw-bold text-muted small">Sale Order</label>
+                        <input type="file" name="sale_order" class="form-control bg-white">
                     </div>
 
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Invoice</label>
-                        <input type="file" name="invoice" class="form-control">
+                    <div class="col-md-4 mb-3 mb-md-0">
+                        <label class="form-label fw-bold text-muted small">Invoice</label>
+                        <input type="file" name="invoice" class="form-control bg-white">
                     </div>
 
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Warranty Card</label>
-                        <input type="file" name="warranty_doc" class="form-control">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold text-muted small">Warranty Card</label>
+                        <input type="file" name="warranty_doc" class="form-control bg-white">
                     </div>
                 </div>
 
                 <!-- OPTIONAL ASSIGNMENT -->
-                <h5 class="text-primary border-bottom pb-2 mb-3 mt-4">Assign Asset to User (Optional)</h5>
+                <h6 class="text-dark fw-bold text-uppercase mb-3 border-top pt-4"><i class="bi bi-person-plus me-1"></i> Fast Assignment (Optional)</h6>
 
-                <div class="card border-success mb-4">
-                    <div class="card-header bg-success text-white">
-                        <h6 class="mb-0">Assignment Details</h6>
-                    </div>
-                    <div class="card-body">
+                <div class="card border-dark mb-4 shadow-sm">
+                    <div class="card-body bg-light">
 
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" name="assign_now" id="assign_now" value="1"
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input fs-5" type="checkbox" name="assign_now" id="assign_now" value="1"
                                 <?= isset($_POST['assign_now']) ? 'checked' : '' ?>>
-                            <label class="form-check-label fw-bold" for="assign_now">
-                                Assign this asset immediately after saving
+                            <label class="form-check-label fw-bold ms-2 pt-1 text-dark" for="assign_now">
+                                Assign this asset to a user immediately after saving
                             </label>
                         </div>
 
-                        <div id="assignment_fields" style="display:none;">
+                        <div id="assignment_fields" style="display:none;" class="p-3 bg-white border rounded">
                             <div class="row">
                                 <div class="col-md-6 mb-3">
-                                    <label class="form-label">Select User</label>
-                                    <select name="user_id" id="user_id" class="form-select">
+                                    <label class="form-label fw-bold">Select User</label>
+                                    <select name="user_id" id="user_id" class="form-select shadow-sm">
                                         <option value="">-- Choose Employee --</option>
                                         <?php
                                         mysqli_data_seek($users, 0);
@@ -468,19 +726,19 @@ include("../../includes/sidebar.php");
                                         }
                                         ?>
                                     </select>
-                                    <small class="text-muted">Users are filtered based on the selected Location above.</small>
+                                    <small class="text-primary mt-1 d-block"><i class="bi bi-funnel-fill"></i> Automatically filtered based on the Location chosen above.</small>
                                 </div>
 
                                 <div class="col-md-6 mb-3">
-                                    <label class="form-label">Assignment Date</label>
-                                    <input type="date" name="assigned_date" class="form-control"
+                                    <label class="form-label fw-bold">Assignment Date</label>
+                                    <input type="date" name="assigned_date" class="form-control shadow-sm"
                                         value="<?= htmlspecialchars($_POST['assigned_date'] ?? date('Y-m-d')) ?>">
                                 </div>
                             </div>
 
-                            <div class="mb-3">
-                                <label class="form-label">Remarks / Handover Notes</label>
-                                <textarea name="assign_remarks" class="form-control" rows="3"
+                            <div class="mb-1">
+                                <label class="form-label fw-bold">Remarks / Handover Notes</label>
+                                <textarea name="assign_remarks" class="form-control shadow-sm" rows="2"
                                     placeholder="e.g. Handed over with charger and bag..."><?= htmlspecialchars($_POST['assign_remarks'] ?? '') ?></textarea>
                             </div>
                         </div>
@@ -488,13 +746,9 @@ include("../../includes/sidebar.php");
                 </div>
 
                 <!-- ACTION BUTTONS -->
-                <div class="mt-4 border-top pt-3">
-                    <button type="submit" name="save_asset" class="btn btn-primary btn-lg px-5">
-                        Save Asset
-                    </button>
-                    <a href="assets_list.php" class="btn btn-secondary btn-lg px-5">
-                        Cancel
-                    </a>
+                <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
+                    <a href="assets_list.php" class="btn btn-light border px-4 shadow-sm">Cancel</a>
+                    <button type="submit" name="save_asset" class="btn btn-primary px-5 fw-bold shadow-sm"><i class="bi bi-save me-1"></i> Save Asset</button>
                 </div>
 
             </form>
@@ -689,4 +943,7 @@ include("../../includes/sidebar.php");
     });
 </script>
 
-<?php include("../../includes/footer.php"); ?>
+<?php 
+if (ob_get_length()) ob_end_flush();
+include("../../includes/footer.php"); 
+?>
