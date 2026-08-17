@@ -47,6 +47,10 @@ if (isset($_POST['save'])) {
     $financial_year = mysqli_real_escape_string($conn, trim($_POST['financial_year']));
     $specifications = mysqli_real_escape_string($conn, trim($_POST['specifications']));
 
+    // --- ADDED COST CAPTURE HERE ---
+    $cost = !empty($_POST['cost']) ? trim($_POST['cost']) : "0";
+    $cost_sql = is_numeric($cost) ? $cost : "0";
+
     $purchase_date_sql = $purchase_date ? "'$purchase_date'" : "NULL";
     $expiry_date_sql   = $expiry_date ? "'$expiry_date'" : "NULL";
     
@@ -86,10 +90,11 @@ if (isset($_POST['save'])) {
         if (empty($category_id)) {
             $error = "Please select both a Main Category and a Sub Category.";
         } else {
+            // --- ADDED COST TO THE INSERT QUERY HERE ---
             $query = "INSERT INTO asset_models 
-                        (model_name, category_id, vendor_id, make_name, contract_no, quantity, purchase_date, expiry_date, financial_year, specifications, model_image, supply_order_doc) 
+                        (model_name, category_id, vendor_id, make_name, contract_no, quantity, purchase_date, expiry_date, financial_year, specifications, model_image, supply_order_doc, cost) 
                       VALUES 
-                        ('$name', '$category_id', '$vendor_id', '$make_name', '$contract_no', '$quantity', $purchase_date_sql, $expiry_date_sql, '$financial_year', '$specifications', $image_path_db, $supply_order_db)";
+                        ('$name', '$category_id', '$vendor_id', '$make_name', '$contract_no', '$quantity', $purchase_date_sql, $expiry_date_sql, '$financial_year', '$specifications', $image_path_db, $supply_order_db, $cost_sql)";
             
             if(mysqli_query($conn, $query)) {
                 header("Location: " . ROUTE_MODELS);
@@ -197,20 +202,25 @@ include("../../includes/sidebar.php");
                 </div>
 
                 <div class="row">
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-3 mb-3">
                         <label class="form-label">Financial Year</label>
                         <input type="text" name="financial_year" class="form-control" placeholder="e.g. 2025-26">
                     </div>
 
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Model Image / Logo</label>
+                    <!-- --- ADDED COST FIELD HERE --- -->
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Unit Cost (₹)</label>
+                        <input type="number" step="0.01" min="0" name="cost" class="form-control" placeholder="0.00">
+                    </div>
+
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Model Image</label>
                         <input type="file" name="model_image" class="form-control" accept=".jpg,.jpeg,.png,.webp,.gif">
                     </div>
                     
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Supply Order Document <i class="bi bi-file-earmark-pdf text-danger"></i></label>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Supply Order Doc <i class="bi bi-file-earmark-pdf text-danger"></i></label>
                         <input type="file" name="supply_order_doc" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
-                        <small class="text-muted">Attached to all assets of this model.</small>
                     </div>
                 </div>
 

@@ -1,9 +1,11 @@
 <?php
+ob_start(); // CRITICAL: Protects the Excel/CSV Export Headers from failing
 global $conn;
 include("../../includes/auth.php");
 include("../../config/db.php");
 
-$id = mysqli_real_escape_string($conn, $_GET['id']);
+// Safely capture the ID
+$id = isset($_GET['id']) ? mysqli_real_escape_string($conn, $_GET['id']) : '0';
 
 /* ---------- MODEL BASIC INFO ---------- */
 // UPDATED: Joined asset_categories a second time to fetch the Parent Category Name
@@ -23,7 +25,7 @@ $model = mysqli_fetch_assoc(mysqli_query($conn, $model_query));
 
 if (!$model) {
     include("../../includes/header.php");
-    echo "<div class='container mt-4'><div class='alert alert-danger'>Model not found.</div></div>";
+    echo "<div class='container mt-4'><div class='alert alert-danger shadow-sm border-0'><i class='bi bi-exclamation-triangle-fill me-2'></i> Model not found.</div></div>";
     include("../../includes/footer.php");
     exit();
 }
@@ -142,36 +144,39 @@ $total_query = mysqli_query($conn, "SELECT COUNT(*) as total FROM assets WHERE m
 $total_assets = mysqli_fetch_assoc($total_query)['total'];
 ?>
 
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-4 mb-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Model Profile: <?= htmlspecialchars($model['model_name']) ?></h2>
+        <div>
+            <h2 class="mb-0 text-dark"><i class="bi bi-box-seam me-2 text-primary"></i> <?= htmlspecialchars($model['model_name']) ?></h2>
+            <div class="text-muted mt-1 small">Detailed Profile & Linked Assets</div>
+        </div>
         <div class="d-flex gap-2 flex-wrap">
             <!-- Export Dropdown -->
             <div class="dropdown">
-                <button class="btn btn-outline-dark dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                <button class="btn btn-outline-dark dropdown-toggle fw-bold" type="button" data-bs-toggle="dropdown">
                     <i class="bi bi-download"></i> Export
                 </button>
                 <ul class="dropdown-menu shadow">
-                    <li><a class="dropdown-item" href="javascript:void(0)" onclick="exportToPDF()"><i class="bi bi-file-earmark-pdf text-danger"></i> Export as PDF</a></li>
-                    <li><a class="dropdown-item" href="?id=<?= $id ?>&status=<?= $status ?>&location=<?= $location ?>&export=excel"><i class="bi bi-file-earmark-excel text-success"></i> Export as Excel</a></li>
-                    <li><a class="dropdown-item" href="?id=<?= $id ?>&status=<?= $status ?>&location=<?= $location ?>&export=csv"><i class="bi bi-file-earmark-text text-primary"></i> Export as CSV</a></li>
+                    <li><a class="dropdown-item py-2" href="javascript:void(0)" onclick="exportToPDF()"><i class="bi bi-file-earmark-pdf text-danger me-2"></i> Export as PDF</a></li>
+                    <li><a class="dropdown-item py-2" href="?id=<?= $id ?>&status=<?= $status ?>&location=<?= $location ?>&export=excel"><i class="bi bi-file-earmark-excel text-success me-2"></i> Export as Excel</a></li>
+                    <li><a class="dropdown-item py-2" href="?id=<?= $id ?>&status=<?= $status ?>&location=<?= $location ?>&export=csv"><i class="bi bi-file-earmark-text text-primary me-2"></i> Export as CSV</a></li>
                 </ul>
             </div>
-            <a href="<?= ROUTE_MODELS_EDIT ?>?id=<?= $id ?>" class="btn btn-warning">Edit Model</a>
-            <a href="<?= ROUTE_MODELS ?>" class="btn btn-secondary">Back to List</a>
+            <a href="<?= ROUTE_MODELS_EDIT ?>?id=<?= $id ?>" class="btn btn-warning fw-bold text-dark"><i class="bi bi-pencil-fill me-1"></i> Edit Model</a>
+            <a href="<?= ROUTE_MODELS ?>" class="btn btn-secondary fw-bold"><i class="bi bi-arrow-left me-1"></i> Back</a>
         </div>
     </div>
 
     <div class="row">
         <!-- LEFT COLUMN: MODEL INFO & IMAGE -->
         <div class="col-md-4">
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">Model Information</h5>
+            <div class="card shadow-sm mb-4 border-0 border-top border-primary border-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0 text-primary fw-bold"><i class="bi bi-info-circle-fill me-1"></i> Model Information</h5>
                 </div>
                 <div class="card-body">
                     <!-- MODEL LOGO / IMAGE DISPLAY -->
-                    <div class="text-center mb-3 p-2 bg-light border rounded">
+                    <div class="text-center mb-4 p-3 bg-light border rounded shadow-sm">
                         <?php if (!empty($model['model_image'])): ?>
                             <img src="../../<?= htmlspecialchars($model['model_image']) ?>" class="img-fluid rounded" style="max-height: 150px; object-fit: contain;" alt="Model Image/Logo">
                         <?php else: ?>
@@ -182,32 +187,37 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                         <?php endif; ?>
                     </div>
 
-                    <table class="table table-sm">
-                        <tr><th width="40%">Model Name</th><td><?= htmlspecialchars($model['model_name']) ?></td></tr>
-                        <tr><th>Make</th><td><?= htmlspecialchars($model['make_name'] ?: 'N/A') ?></td></tr>
+                    <table class="table table-sm table-borderless">
+                        <tr><th width="40%" class="text-muted">Model Name</th><td class="fw-bold"><?= htmlspecialchars($model['model_name']) ?></td></tr>
+                        <tr><th class="text-muted">Make</th><td><?= htmlspecialchars($model['make_name'] ?: 'N/A') ?></td></tr>
                         
                         <!-- DYNAMIC CATEGORY DISPLAY (Shows Parent » Child) -->
                         <tr>
-                            <th>Category</th>
+                            <th class="text-muted">Category</th>
                             <td>
                                 <?php 
                                     if (!empty($model['parent_category_name'])) {
                                         echo htmlspecialchars($model['parent_category_name']) . ' &raquo; <span class="fw-bold">' . htmlspecialchars($model['category_name']) . '</span>';
                                     } else {
-                                        echo htmlspecialchars($model['category_name'] ?: 'N/A');
+                                        echo '<span class="fw-bold">' . htmlspecialchars($model['category_name'] ?: 'N/A') . '</span>';
                                     }
                                 ?>
                             </td>
                         </tr>
 
-                        <tr><th>Vendor</th><td><?= htmlspecialchars($model['vendor_name'] ?: 'N/A') ?></td></tr>
-                        <tr><th>Contract No</th><td><?= htmlspecialchars($model['contract_no'] ?: 'N/A') ?></td></tr>
-                        <tr><th>Quantity</th><td><?= (int)($model['quantity'] ?? 0) ?></td></tr>
-                        <tr><th>F.Y.</th><td><?= htmlspecialchars($model['financial_year'] ?: 'N/A') ?></td></tr>
+                        <tr><th class="text-muted">Vendor</th><td><?= htmlspecialchars($model['vendor_name'] ?: 'N/A') ?></td></tr>
+                        <tr><th class="text-muted">Contract No</th><td><code><?= htmlspecialchars($model['contract_no'] ?: 'N/A') ?></code></td></tr>
                         
-                        <tr><th>Purchase Date</th><td class="fw-bold"><?= !empty($model['purchase_date']) ? date('d M Y', strtotime($model['purchase_date'])) : 'N/A' ?></td></tr>
+                        <!-- QUANTITY & COST (WITH AUTOMATIC TOTAL VALUE) -->
+                        <tr class="border-top"><th class="text-muted pt-2">Quantity</th><td class="pt-2"><span class="badge bg-secondary"><?= (int)($model['quantity'] ?? 0) ?> Units</span></td></tr>
+                        <tr><th class="text-muted">Unit Cost</th><td class="text-success fw-bold">₹ <?= number_format((float)($model['cost'] ?? 0), 2) ?></td></tr>
+                        <tr><th class="text-muted">Total Value</th><td class="text-primary fw-bold">₹ <?= number_format(((int)($model['quantity'] ?? 0) * (float)($model['cost'] ?? 0)), 2) ?></td></tr>
+                        
+                        <tr><th class="text-muted">F.Y.</th><td><?= htmlspecialchars($model['financial_year'] ?: 'N/A') ?></td></tr>
+                        
+                        <tr class="border-top"><th class="text-muted pt-2">Purchase Date</th><td class="pt-2 fw-bold"><?= !empty($model['purchase_date']) ? date('d M Y', strtotime($model['purchase_date'])) : 'N/A' ?></td></tr>
                         <tr>
-                            <th>Expiry Date</th>
+                            <th class="text-muted">Warranty Expiry</th>
                             <td>
                                 <?php 
                                     if (!empty($model['expiry_date'])) {
@@ -220,12 +230,12 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                             </td>
                         </tr>
                         <tr>
-                            <th class="align-middle">Supply Order</th>
+                            <th class="align-middle text-muted">Supply Order</th>
                             <td>
                                 <?php if (!empty($model['supply_order_doc'])): ?>
-                                    <a href="../../<?= htmlspecialchars($model['supply_order_doc']) ?>" target="_blank" class="btn btn-sm btn-outline-danger w-100"><i class="bi bi-file-pdf"></i> View Doc</a>
+                                    <a href="../../<?= htmlspecialchars($model['supply_order_doc']) ?>" target="_blank" class="btn btn-sm btn-outline-danger w-100 fw-bold"><i class="bi bi-file-pdf-fill me-1"></i> View Doc</a>
                                 <?php else: ?>
-                                    <span class="badge bg-secondary">Not Uploaded</span>
+                                    <span class="badge bg-light text-muted border">Not Uploaded</span>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -233,21 +243,21 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                 </div>
             </div>
 
-            <div class="card shadow-sm mb-4">
+            <div class="card shadow-sm mb-4 border-0">
                 <div class="card-header bg-dark text-white">
-                    <h5 class="mb-0">Specifications</h5>
+                    <h6 class="mb-0"><i class="bi bi-card-text me-2"></i> Specifications</h6>
                 </div>
-                <div class="card-body">
-                    <div class="bg-light p-3 border rounded">
+                <div class="card-body bg-light">
+                    <div class="p-2">
                         <?= nl2br(htmlspecialchars($model['specifications'] ?: 'No specifications provided.')) ?>
                     </div>
                 </div>
             </div>
 
-            <div class="card shadow-sm mb-4 border-info">
-                <div class="card-body text-center">
-                    <h6 class="text-muted mb-2">Total Assets of this Model</h6>
-                    <h2 class="display-4 fw-bold text-info"><?= $total_assets ?></h2>
+            <div class="card shadow-sm mb-4 border-0 border-top border-info border-4 bg-info bg-opacity-10">
+                <div class="card-body text-center py-4">
+                    <h6 class="text-muted fw-bold mb-2 text-uppercase">Total Assets of this Model</h6>
+                    <h1 class="display-3 fw-bolder text-info mb-0"><?= $total_assets ?></h1>
                 </div>
             </div>
         </div>
@@ -255,14 +265,14 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
         <!-- RIGHT COLUMN: ASSETS LIST & FILTERS -->
         <div class="col-md-8">
             <!-- FILTER FORM -->
-            <div class="card mb-4 shadow-sm">
+            <div class="card mb-4 shadow-sm border-0 bg-light">
                 <div class="card-body">
                     <form method="GET" class="row g-3">
                         <input type="hidden" name="id" value="<?= $id ?>">
 
                         <div class="col-md-4">
-                            <label class="form-label small">Status</label>
-                            <select name="status" class="form-select form-select-sm">
+                            <label class="form-label small fw-bold text-muted text-uppercase">Status</label>
+                            <select name="status" class="form-select form-select-sm shadow-sm">
                                 <option value="">All Status</option>
                                 <?php
                                 $sts_query = "SELECT DISTINCT s.status_id, s.status_name 
@@ -280,8 +290,8 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                         </div>
 
                         <div class="col-md-4">
-                            <label class="form-label small">Location</label>
-                            <select name="location" class="form-select form-select-sm">
+                            <label class="form-label small fw-bold text-muted text-uppercase">Location</label>
+                            <select name="location" class="form-select form-select-sm shadow-sm">
                                 <option value="">All Locations</option>
                                 <?php
                                 $loc_query = "SELECT DISTINCT l.location_id, l.dept_name 
@@ -298,54 +308,77 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                             </select>
                         </div>
 
-                        <div class="col-md-4 d-flex align-items-end">
-                            <button type="submit" class="btn btn-primary btn-sm me-2 w-100">Filter</button>
-                            <a href="models_details.php?id=<?= $id ?>" class="btn btn-outline-secondary btn-sm w-100">Reset</a>
+                        <div class="col-md-4 d-flex align-items-end gap-2">
+                            <button type="submit" class="btn btn-primary btn-sm w-100 shadow-sm fw-bold"><i class="bi bi-funnel"></i> Filter</button>
+                            <a href="models_details.php?id=<?= $id ?>" class="btn btn-outline-secondary btn-sm w-100 shadow-sm">Reset</a>
                         </div>
                     </form>
                 </div>
             </div>
 
-            <div class="card shadow-sm">
-                <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Assets under "<?= htmlspecialchars($model['model_name']) ?>"</h5>
-                    <span class="badge bg-dark"><?= $filtered_count ?> Results</span>
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold text-dark">Linked Assets</h5>
+                    <span class="badge bg-dark rounded-pill px-3"><?= $filtered_count ?> Results</span>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <!-- ADDED ID="assetsTable" HERE FOR PDF EXPORT -->
-                        <table class="table table-hover table-striped mb-0" id="assetsTable">
-                            <thead class="table-light">
+                        <table class="table table-hover align-middle mb-0" id="assetsTable">
+                            <thead class="table-light text-secondary">
                                 <tr>
-                                    <th>Asset Name</th>
-                                    <th>User Name</th>
-                                    <th>Serial No</th>
-                                    <th>Category</th>
-                                    <th>Status</th>
-                                    <th>Location</th>
+                                    <th class="ps-3 border-bottom-0">Asset Name</th>
+                                    <th class="border-bottom-0">Serial No</th>
+                                    <th class="border-bottom-0">Status</th>
+                                    <th class="border-bottom-0">Location</th>
+                                    <th class="border-bottom-0">Assigned To</th>
                                     <!-- ADDED "no-export" CLASS HERE -->
-                                    <th class="text-center no-export">Action</th>
+                                    <th class="text-center no-export border-bottom-0">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if($filtered_count > 0): ?>
                                     <?php while($asset = mysqli_fetch_assoc($assets_result)): ?>
                                         <tr>
-                                            <td class="fw-bold"><?= htmlspecialchars($asset['asset_name']) ?></td>
-                                            <td class="fw-bold"><?= htmlspecialchars($asset['user_name'] ?? 'N/A') ?></td>
-                                            <td><code><?= htmlspecialchars($asset['serial_number']) ?></code></td>
-                                            <td><?= htmlspecialchars($asset['category_name'] ?? 'N/A') ?></td>
-                                            <td><span class="badge bg-info"><?= htmlspecialchars($asset['status_name'] ?? 'N/A') ?></span></td>
+                                            <td class="ps-3 fw-bold text-dark"><?= htmlspecialchars($asset['asset_name']) ?></td>
+                                            
+                                            <td><code class="bg-primary bg-opacity-10 text-primary px-2 py-1 rounded"><?= htmlspecialchars($asset['serial_number']) ?></code></td>
+                                            
+                                            <td>
+                                                <?php
+                                                $badge_class = 'bg-secondary';
+                                                if (($asset['status_name'] ?? '') == 'Assigned') $badge_class = 'bg-primary';
+                                                elseif (in_array(($asset['status_name'] ?? ''), ['Available', 'Working'])) $badge_class = 'bg-success';
+                                                elseif (($asset['status_name'] ?? '') == 'Under Repair') $badge_class = 'bg-warning text-dark';
+                                                elseif (in_array(($asset['status_name'] ?? ''), ['Retired', 'Condemned'])) $badge_class = 'bg-danger';
+                                                ?>
+                                                <span class="badge <?= $badge_class ?> rounded-pill">
+                                                    <?= htmlspecialchars($asset['status_name'] ?? 'N/A') ?>
+                                                </span>
+                                            </td>
+
                                             <td><?= htmlspecialchars($asset['dept_name'] ?? 'N/A') ?></td>
+                                            
+                                            <td>
+                                                <?php if (!empty($asset['user_name'])): ?>
+                                                    <div class="fw-bold text-dark"><i class="bi bi-person text-muted me-1"></i><?= htmlspecialchars($asset['user_name']) ?></div>
+                                                <?php else: ?>
+                                                    <span class="text-muted small">Not Assigned</span>
+                                                <?php endif; ?>
+                                            </td>
+
                                             <!-- ADDED "no-export" CLASS HERE -->
                                             <td class="text-center no-export">
-                                                <a href="../assets/asset_details.php?id=<?= $asset['asset_id'] ?>" class="btn btn-sm btn-outline-primary">View</a>
+                                                <a href="../assets/asset_details.php?id=<?= $asset['asset_id'] ?>" class="btn btn-sm btn-outline-primary shadow-sm fw-bold">View</a>
                                             </td>
                                         </tr>
                                     <?php endwhile; ?>
                                 <?php else: ?>
                                     <tr>
-                                        <td colspan="7" class="text-center py-4 text-muted">No assets found matching your criteria.</td>
+                                        <td colspan="6" class="text-center py-5 text-muted">
+                                            <i class="bi bi-inboxes fs-2 d-block mb-2 opacity-50"></i>
+                                            <h6 class="mb-0">No assets found matching your criteria.</h6>
+                                        </td>
                                     </tr>
                                 <?php endif; ?>
                             </tbody>
@@ -380,7 +413,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
             startY: 25,
             styles: {
                 fontSize: 9,
-                cellPadding: 2
+                cellPadding: 3
             },
             headStyles: {
                 fillColor: [52, 58, 64]
@@ -397,4 +430,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
     }
 </script>
 
-<?php include("../../includes/footer.php"); ?>
+<?php 
+if(ob_get_length()) ob_end_flush();
+include("../../includes/footer.php"); 
+?>

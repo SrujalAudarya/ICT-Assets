@@ -4,7 +4,29 @@ global $conn;
 include("../../includes/auth.php");
 include("../../config/db.php");
 
-// FIXED: Capture the ID from POST first, fallback to GET.
+/* =========================================================
+   AJAX HANDLER: FETCH MODEL DETAILS FOR AUTO-FILL
+   ========================================================= */
+if (isset($_GET['action']) && $_GET['action'] == 'get_model_details') {
+    header('Content-Type: application/json');
+    $mod_id = (int)$_GET['model_id'];
+
+    // Dynamically pulls the defaults DIRECTLY from the asset_models table
+    $query = "SELECT vendor_id, purchase_date, expiry_date AS warranty_expiry, cost 
+              FROM asset_models 
+              WHERE model_id = $mod_id LIMIT 1";
+              
+    $res = mysqli_query($conn, $query);
+
+    if ($res && $row = mysqli_fetch_assoc($res)) {
+        echo json_encode($row);
+    } else {
+        echo json_encode([]);
+    }
+    exit();
+}
+
+// Capture the Asset ID securely
 $id = isset($_POST['asset_id']) ? (int)$_POST['asset_id'] : (isset($_GET['id']) ? (int)$_GET['id'] : 0);
 
 /* =========================================================
@@ -33,27 +55,24 @@ if ($current_category_id) {
     $cat_query = mysqli_query($conn, "SELECT parent_id FROM asset_categories WHERE category_id = '$current_category_id'");
     if ($cat_row = mysqli_fetch_assoc($cat_query)) {
         if (empty($cat_row['parent_id']) || $cat_row['parent_id'] == 0) {
-            // It's a Main Category
             $main_cat_id = $current_category_id;
         } else {
-            // It's a Sub Category
             $main_cat_id = $cat_row['parent_id'];
             $sub_cat_id = $current_category_id;
         }
     }
 }
 
+$error = "";
+
 /* =========================================================
    HANDLE FORM SUBMIT (UPDATE)
    ========================================================= */
-$error = "";
-
 if (isset($_POST['update_asset'])) {
     
     $asset_name      = trim($_POST['asset_name'] ?? '');
     $serial_number   = trim($_POST['serial_number'] ?? '');
     
-    // Dynamic Category Resolution
     $post_main_cat_id = trim($_POST['main_category_id'] ?? '');
     $post_sub_cat_id  = trim($_POST['sub_category_id'] ?? '');
     $category_id      = !empty($post_sub_cat_id) ? $post_sub_cat_id : $post_main_cat_id;
@@ -66,30 +85,19 @@ if (isset($_POST['update_asset'])) {
     $warranty_expiry = trim($_POST['warranty_expiry'] ?? '');
     $cost            = trim($_POST['cost'] ?? '');
 
-    // Validation
-    if ($asset_name == "") {
-        $error = "Asset Name is required.";
-    } elseif ($serial_number == "") {
-        $error = "Serial Number is required.";
-    } elseif ($category_id == "") {
-        $error = "Please select at least a Main Category.";
-    } elseif ($location_id == "") {
-        $error = "Please select Location.";
-    } elseif ($status_id == "") {
-        $error = "Please select Status.";
-    }
+    if ($asset_name == "") $error = "Asset Name is required.";
+    elseif ($serial_number == "") $error = "Serial Number is required.";
+    elseif ($category_id == "") $error = "Please select at least a Main Category.";
+    elseif ($location_id == "") $error = "Please select Location.";
+    elseif ($status_id == "") $error = "Please select Status.";
 
-    // Duplicate serial number check (excluding current asset)
     if ($error == "") {
         $serial_safe = mysqli_real_escape_string($conn, $serial_number);
         $dup = mysqli_query($conn, "SELECT asset_id FROM assets WHERE serial_number = '$serial_safe' AND asset_id != '$id' LIMIT 1");
-        if ($dup && mysqli_num_rows($dup) > 0) {
-            $error = "Another asset with this Serial Number already exists.";
-        }
+        if ($dup && mysqli_num_rows($dup) > 0) $error = "Another asset with this Serial Number already exists.";
     }
 
     if ($error == "") {
-        // Escape values
         $asset_name_safe    = mysqli_real_escape_string($conn, $asset_name);
         $category_id_safe   = mysqli_real_escape_string($conn, $category_id);
         $location_id_safe   = mysqli_real_escape_string($conn, $location_id);
@@ -117,7 +125,7 @@ if (isset($_POST['update_asset'])) {
         ";
 
         if (mysqli_query($conn, $update_query)) {
-            // Redirect to the Asset List page immediately after successful update
+            // Success! Send them back to the list
             header("Location: assets_list.php?msg=updated");
             exit();
         } else {
@@ -126,9 +134,6 @@ if (isset($_POST['update_asset'])) {
     }
 }
 
-/* =========================================================
-   FETCH DROPDOWNS
-   ========================================================= */
 $main_categories = mysqli_query($conn, "SELECT category_id, category_name FROM asset_categories WHERE parent_id = 0 OR parent_id IS NULL ORDER BY category_name ASC");
 $sub_categories  = mysqli_query($conn, "SELECT category_id, category_name, parent_id FROM asset_categories WHERE parent_id > 0 ORDER BY category_name ASC");
 $models    = mysqli_query($conn, "SELECT model_id, model_name, category_id FROM asset_models ORDER BY model_name ASC");
@@ -142,7 +147,6 @@ include("../../includes/sidebar.php");
 
 <div class="container mt-4 mb-5">
     
-    <!-- PAGE HEADER -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h3 class="mb-0 text-dark"><i class="bi bi-pencil-square text-warning me-2"></i> Edit Asset</h3>
@@ -154,8 +158,8 @@ include("../../includes/sidebar.php");
                 </ol>
             </nav>
         </div>
-        <a href="asset_details.php?id=<?= $id ?>" class="btn btn-secondary shadow-sm fw-bold">
-            <i class="bi bi-arrow-left me-1"></i> Back to Details
+        <a href="assets_list.php" class="btn btn-secondary shadow-sm fw-bold">
+            <i class="bi bi-arrow-left me-1"></i> Back to List
         </a>
     </div>
 
@@ -169,8 +173,8 @@ include("../../includes/sidebar.php");
                 <div class="alert alert-danger d-flex align-items-center shadow-sm"><i class="bi bi-exclamation-triangle-fill me-2"></i> <?= htmlspecialchars($error) ?></div>
             <?php endif; ?>
 
-            <!-- FIXED: Added action explicitly and a hidden input for the ID to ensure it is sent in POST -->
             <form method="post" action="assets_edit.php?id=<?= $id ?>">
+                <!-- CRITICAL: This hidden input ensures the ID doesn't get lost on save! -->
                 <input type="hidden" name="asset_id" value="<?= $id ?>">
 
                 <div class="row">
@@ -277,19 +281,20 @@ include("../../includes/sidebar.php");
                 </div>
 
                 <div class="row">
+                    <!-- Added ID tags to these inputs so Javascript can auto-fill them -->
                     <div class="col-md-4 mb-3">
                         <label class="form-label fw-bold">Purchase Date</label>
-                        <input type="date" name="purchase_date" class="form-control shadow-sm" value="<?= htmlspecialchars($asset['purchase_date'] ?? '') ?>">
+                        <input type="date" name="purchase_date" id="purchase_date" class="form-control shadow-sm" value="<?= htmlspecialchars($asset['purchase_date'] ?? '') ?>">
                     </div>
 
                     <div class="col-md-4 mb-3">
                         <label class="form-label fw-bold">Warranty Expiry</label>
-                        <input type="date" name="warranty_expiry" class="form-control shadow-sm" value="<?= htmlspecialchars($asset['warranty_expiry'] ?? '') ?>">
+                        <input type="date" name="warranty_expiry" id="warranty_expiry" class="form-control shadow-sm" value="<?= htmlspecialchars($asset['warranty_expiry'] ?? '') ?>">
                     </div>
 
                     <div class="col-md-4 mb-3">
                         <label class="form-label fw-bold">Total Cost (₹)</label>
-                        <input type="number" step="0.01" min="0" name="cost" class="form-control shadow-sm" value="<?= htmlspecialchars($asset['cost'] ?? '') ?>">
+                        <input type="number" step="0.01" min="0" name="cost" id="cost" class="form-control shadow-sm" value="<?= htmlspecialchars($asset['cost'] ?? '') ?>">
                     </div>
                 </div>
 
@@ -363,6 +368,39 @@ include("../../includes/sidebar.php");
         if (mainCatSelect.value !== "") {
             filterSubCategories(true);
         }
+
+        // ----------------------------------------------------
+        // NEW LOGIC: Model Auto-fill Data Fetching
+        // ----------------------------------------------------
+        const vendorSelect = document.getElementById("vendor_id");
+        const purchaseDateInput = document.getElementById("purchase_date");
+        const warrantyExpiryInput = document.getElementById("warranty_expiry");
+        const costInput = document.getElementById("cost");
+
+        modelSelect.addEventListener('change', function() {
+            const selectedModelId = this.value;
+
+            // In Edit Mode, we don't clear the fields if they unselect a model 
+            // (so we don't accidentally wipe out their custom data unless they pick a new model)
+            if (!selectedModelId) {
+                return;
+            }
+
+            // Fetch data for the newly selected model via AJAX
+            fetch(window.location.pathname + `?action=get_model_details&model_id=${selectedModelId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && Object.keys(data).length > 0) {
+                        if (data.vendor_id) vendorSelect.value = data.vendor_id;
+                        if (data.purchase_date) purchaseDateInput.value = data.purchase_date;
+                        if (data.warranty_expiry) warrantyExpiryInput.value = data.warranty_expiry;
+                        if (data.cost) costInput.value = data.cost;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching model details:', error);
+                });
+        });
     });
 </script>
 

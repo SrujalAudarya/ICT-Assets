@@ -1,9 +1,10 @@
 <?php
+ob_start(); // Added to prevent redirect errors
 global $conn;
 include("../../includes/auth.php");
 include("../../config/db.php");
 
-$id = mysqli_real_escape_string($conn, $_GET['id']);
+$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $error = "";
 
 /* =========================================================
@@ -43,13 +44,17 @@ if(isset($_POST['update'])) {
     $quantity = !empty($_POST['quantity']) ? (int)$_POST['quantity'] : 0;
     
     $purchase_date = !empty($_POST['purchase_date']) ? mysqli_real_escape_string($conn, $_POST['purchase_date']) : NULL;
-    $expiry_date   = !empty($_POST['expiry_date']) ? mysqli_real_escape_string($conn, $_POST['expiry_date']) : NULL; // NEW
+    $expiry_date   = !empty($_POST['expiry_date']) ? mysqli_real_escape_string($conn, $_POST['expiry_date']) : NULL;
     
     $financial_year = mysqli_real_escape_string($conn, $_POST['financial_year']);
     $specifications = mysqli_real_escape_string($conn, $_POST['specifications']);
 
+    // --- ADDED COST CAPTURE ---
+    $cost = !empty($_POST['cost']) ? trim($_POST['cost']) : "0";
+    $cost_sql = is_numeric($cost) ? $cost : "0";
+
     $purchase_date_sql = $purchase_date ? "'$purchase_date'" : "NULL";
-    $expiry_date_sql   = $expiry_date ? "'$expiry_date'" : "NULL"; // NEW
+    $expiry_date_sql   = $expiry_date ? "'$expiry_date'" : "NULL"; 
     
     $img_res = mysqli_query($conn, "SELECT model_image, supply_order_doc FROM asset_models WHERE model_id=$id");
     $db_data = mysqli_fetch_assoc($img_res);
@@ -88,15 +93,17 @@ if(isset($_POST['update'])) {
         if (empty($category_id)) {
             $error = "Please select a Category.";
         } else {
+            // --- ADDED COST TO THE UPDATE QUERY ---
             $query = "UPDATE asset_models SET 
                       model_name='$name', category_id='$category_id', vendor_id='$vendor_id',
                       make_name='$make_name', contract_no='$contract_no', quantity='$quantity',
-                      purchase_date=$purchase_date_sql, expiry_date=$expiry_date_sql, financial_year='$financial_year', specifications='$specifications'
+                      purchase_date=$purchase_date_sql, expiry_date=$expiry_date_sql, financial_year='$financial_year', specifications='$specifications',
+                      cost=$cost_sql
                       $image_update_sql $doc_update_sql 
                       WHERE model_id=$id";
 
             if(mysqli_query($conn, $query)) {
-                header("Location: " . ROUTE_MODELS);
+                header("Location: " . ROUTE_MODELS . "?msg=updated");
                 exit();
             } else {
                 $error = mysqli_error($conn);
@@ -107,6 +114,11 @@ if(isset($_POST['update'])) {
 
 $result = mysqli_query($conn, "SELECT * FROM asset_models WHERE model_id=$id");
 $row = mysqli_fetch_assoc($result);
+
+if (!$row) {
+    header("Location: " . ROUTE_MODELS);
+    exit();
+}
 
 // Determine current Main Category and Sub Category for pre-selection
 $current_cat_id = $row['category_id'];
@@ -139,7 +151,7 @@ include("../../includes/sidebar.php");
         </div>
         <div class="card-body">
             <?php if($error != ""): ?>
-                <div class="alert alert-danger"><?= $error ?></div>
+                <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
             <?php endif; ?>
 
             <form method="post" enctype="multipart/form-data">
@@ -161,7 +173,7 @@ include("../../includes/sidebar.php");
                         <label class="form-label">Change Supply Order</label>
                         <input type="file" name="supply_order_doc" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
                         <?php if (!empty($row['supply_order_doc'])): ?>
-                            <small class="text-success"><i class="bi bi-check-circle"></i> Document currently uploaded. (<a href="../../<?= $row['supply_order_doc'] ?>" target="_blank">View</a>)</small>
+                            <small class="text-success"><i class="bi bi-check-circle"></i> Document currently uploaded. (<a href="../../<?= htmlspecialchars($row['supply_order_doc']) ?>" target="_blank">View</a>)</small>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -213,7 +225,7 @@ include("../../includes/sidebar.php");
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Make</label>
-                        <input type="text" name="make_name" value="<?= htmlspecialchars($row['make_name']) ?>" class="form-control">
+                        <input type="text" name="make_name" value="<?= htmlspecialchars($row['make_name'] ?? '') ?>" class="form-control">
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Vendor <span class="text-danger">*</span></label>
@@ -234,11 +246,11 @@ include("../../includes/sidebar.php");
                 <div class="row">
                     <div class="col-md-3 mb-3">
                         <label class="form-label">Contract No</label>
-                        <input type="text" name="contract_no" value="<?= htmlspecialchars($row['contract_no']) ?>" class="form-control">
+                        <input type="text" name="contract_no" value="<?= htmlspecialchars($row['contract_no'] ?? '') ?>" class="form-control">
                     </div>
                     <div class="col-md-2 mb-3">
                         <label class="form-label">Quantity</label>
-                        <input type="number" name="quantity" value="<?= htmlspecialchars($row['quantity']) ?>" class="form-control" min="0">
+                        <input type="number" name="quantity" value="<?= htmlspecialchars($row['quantity'] ?? '0') ?>" class="form-control" min="0">
                     </div>
                     <div class="col-md-3 mb-3">
                         <label class="form-label">Purchase Date</label>
@@ -251,19 +263,25 @@ include("../../includes/sidebar.php");
                 </div>
 
                 <div class="row">
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-6 mb-3">
                         <label class="form-label">Financial Year</label>
-                        <input type="text" name="financial_year" value="<?= htmlspecialchars($row['financial_year']) ?>" class="form-control">
+                        <input type="text" name="financial_year" value="<?= htmlspecialchars($row['financial_year'] ?? '') ?>" class="form-control" placeholder="e.g. 2025-26">
+                    </div>
+                    
+                    <!-- --- ADDED COST FIELD HERE --- -->
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Unit Cost (₹)</label>
+                        <input type="number" step="0.01" min="0" name="cost" value="<?= htmlspecialchars($row['cost'] ?? '') ?>" class="form-control" placeholder="0.00">
                     </div>
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label">Specifications</label>
-                    <textarea name="specifications" class="form-control" rows="4"><?= htmlspecialchars($row['specifications']) ?></textarea>
+                    <textarea name="specifications" class="form-control" rows="4"><?= htmlspecialchars($row['specifications'] ?? '') ?></textarea>
                 </div>
 
                 <div class="mt-4 border-top pt-3">
-                    <button type="submit" name="update" class="btn btn-warning px-5 btn-lg">Update Model</button>
+                    <button type="submit" name="update" class="btn btn-warning px-5 btn-lg text-dark fw-bold">Update Model</button>
                     <a href="<?= ROUTE_MODELS ?>" class="btn btn-secondary px-5 btn-lg">Cancel</a>
                 </div>
             </form>
@@ -320,4 +338,7 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 </script>
 
-<?php include("../../includes/footer.php"); ?>
+<?php 
+if (ob_get_length()) ob_end_flush();
+include("../../includes/footer.php"); 
+?>

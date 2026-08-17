@@ -11,22 +11,18 @@ if (isset($_GET['action']) && $_GET['action'] == 'get_model_details') {
     header('Content-Type: application/json');
     $mod_id = (int)$_GET['model_id'];
 
-    $query = "SELECT vendor_id, purchase_date, warranty_expiry, cost 
-              FROM assets 
-              WHERE model_id = $mod_id 
-              ORDER BY asset_id DESC LIMIT 1";
+    // UPDATED: Now dynamically pulls the defaults DIRECTLY from the asset_models table!
+    // (Maps expiry_date to warranty_expiry so the Javascript understands it)
+    $query = "SELECT vendor_id, purchase_date, expiry_date AS warranty_expiry, cost 
+              FROM asset_models 
+              WHERE model_id = $mod_id LIMIT 1";
+              
     $res = mysqli_query($conn, $query);
 
     if ($res && $row = mysqli_fetch_assoc($res)) {
         echo json_encode($row);
     } else {
-        $fallback_query = "SELECT vendor_id FROM asset_models WHERE model_id = $mod_id LIMIT 1";
-        $fallback_res = mysqli_query($conn, $fallback_query);
-        if ($fallback_res && $fallback_row = mysqli_fetch_assoc($fallback_res)) {
-            echo json_encode(['vendor_id' => $fallback_row['vendor_id'], 'purchase_date' => '', 'warranty_expiry' => '', 'cost' => '']);
-        } else {
-            echo json_encode([]);
-        }
+        echo json_encode([]);
     }
     exit();
 }
@@ -90,220 +86,6 @@ function uploadDoc($conn, $asset_id, $file_input, $type)
 }
 
 /* =========================================================
-   CSV IMPORT HELPER FUNCTIONS
-   ========================================================= */
-function parsePurchaseDate($rawDate) {
-    $rawDate = trim($rawDate);
-    if ($rawDate === '') return null;
-    if (preg_match('/^\d{2}-\d{2}-\d{4}$/', $rawDate)) {
-        [$dd, $mm, $yy] = explode('-', $rawDate);
-        if (checkdate((int)$mm, (int)$dd, (int)$yy)) return "$yy-$mm-$dd";
-    }
-    if (preg_match('/^\d{2}\.\d{2}\.\d{4}$/', $rawDate)) {
-        [$dd, $mm, $yy] = explode('.', $rawDate);
-        if (checkdate((int)$mm, (int)$dd, (int)$yy)) return "$yy-$mm-$dd";
-    }
-    if (preg_match('/^\d{2}\.\d{2}\.\d{2}$/', $rawDate)) {
-        [$dd, $mm, $yy] = explode('.', $rawDate);
-        $yy = '20' . $yy;
-        if (checkdate((int)$mm, (int)$dd, (int)$yy)) return "$yy-$mm-$dd";
-    }
-    if (preg_match('/^\d{2}-\d{2}-\d{2}$/', $rawDate)) {
-        [$dd, $mm, $yy] = explode('-', $rawDate);
-        $yy = '20' . $yy;
-        if (checkdate((int)$mm, (int)$dd, (int)$yy)) return "$yy-$mm-$dd";
-    }
-    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawDate)) return $rawDate;
-    return null;
-}
-
-function parseCsvLine($line) {
-    $line = trim($line);
-    if ($line === '') return [];
-    if (strpos($line, "\t") !== false) return str_getcsv($line, "\t");
-    elseif (strpos($line, ";") !== false) return str_getcsv($line, ";");
-    else return str_getcsv($line, ",");
-}
-
-function getCsvCategoryId($conn, $categoryName) {
-    $categoryName = trim($categoryName);
-    if ($categoryName === '') return null;
-    $categoryNameEsc = mysqli_real_escape_string($conn, $categoryName);
-    $res = mysqli_query($conn, "SELECT category_id FROM asset_categories WHERE category_name = '$categoryNameEsc' LIMIT 1");
-    if ($res && mysqli_num_rows($res) > 0) return (int)mysqli_fetch_assoc($res)['category_id'];
-    mysqli_query($conn, "INSERT INTO asset_categories (category_name) VALUES ('$categoryNameEsc')");
-    return mysqli_insert_id($conn);
-}
-
-function getCsvLocationId($conn, $deptName) {
-    $deptName = trim($deptName);
-    if ($deptName === '') return null;
-    $deptNameEsc = mysqli_real_escape_string($conn, $deptName);
-    $res = mysqli_query($conn, "SELECT location_id FROM locations WHERE dept_name = '$deptNameEsc' LIMIT 1");
-    if ($res && mysqli_num_rows($res) > 0) return (int)mysqli_fetch_assoc($res)['location_id'];
-    mysqli_query($conn, "INSERT INTO locations (dept_name) VALUES ('$deptNameEsc')");
-    return mysqli_insert_id($conn);
-}
-
-function getCsvModelId($conn, $modelName, $category_id = null, $vendor_id = null) {
-    $modelName = trim($modelName);
-    if ($modelName === '') return null;
-    $modelNameEsc = mysqli_real_escape_string($conn, $modelName);
-    $res = mysqli_query($conn, "SELECT model_id FROM asset_models WHERE model_name = '$modelNameEsc' LIMIT 1");
-    if ($res && mysqli_num_rows($res) > 0) return (int)mysqli_fetch_assoc($res)['model_id'];
-    $categorySql = $category_id ? $category_id : "NULL";
-    $vendorSql   = $vendor_id ? $vendor_id : "NULL";
-    mysqli_query($conn, "INSERT INTO asset_models (model_name, category_id, vendor_id) VALUES ('$modelNameEsc', $categorySql, $vendorSql)");
-    return mysqli_insert_id($conn);
-}
-
-function getCsvVendorId($conn, $vendorName) {
-    $vendorName = trim($vendorName);
-    if ($vendorName === '') return null;
-    $vendorNameEsc = mysqli_real_escape_string($conn, $vendorName);
-    $res = mysqli_query($conn, "SELECT vendor_id FROM vendors WHERE vendor_name = '$vendorNameEsc' LIMIT 1");
-    if ($res && mysqli_num_rows($res) > 0) return (int)mysqli_fetch_assoc($res)['vendor_id'];
-    mysqli_query($conn, "INSERT INTO vendors (vendor_name) VALUES ('$vendorNameEsc')");
-    return mysqli_insert_id($conn);
-}
-
-// RESTRICTED TO ONLY "ASSIGNED" OR "AVAILABLE"
-function getCsvStatusId($conn, $hasAssignedUser = false) {
-    if ($hasAssignedUser) {
-        $res = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name = 'Assigned' LIMIT 1");
-        if ($res && mysqli_num_rows($res) > 0) return (int)mysqli_fetch_assoc($res)['status_id'];
-    }
-    $res = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name = 'Available' LIMIT 1");
-    if ($res && mysqli_num_rows($res) > 0) return (int)mysqli_fetch_assoc($res)['status_id'];
-    return null;
-}
-
-
-/* =========================================================
-   HANDLE CSV IMPORT LOGIC
-   ========================================================= */
-$error = "";
-$success_msg = "";
-
-if (isset($_POST['import_assets_excel'])) {
-    if (!empty($_FILES['asset_excel_file']['name'])) {
-        $fileExt = strtolower(pathinfo($_FILES['asset_excel_file']['name'], PATHINFO_EXTENSION));
-
-        if ($fileExt !== 'csv') {
-            $error = "Please upload only a CSV file.";
-        } else {
-            $fileName = $_FILES['asset_excel_file']['tmp_name'];
-            $handle = fopen($fileName, "r");
-
-            if ($handle !== false) {
-                $rowCount = 0;
-                $successCount = 0;
-                $failCount = 0;
-                $failedRows = [];
-
-                while (($line = fgets($handle)) !== false) {
-                    $rowCount++;
-                    if ($rowCount == 1) continue; // Skip header
-
-                    $line = trim($line);
-                    if ($line === '') continue;
-                    $row = parseCsvLine($line);
-
-                    $assignedUserName = trim($row[0] ?? '');
-                    $categoryName     = trim($row[1] ?? '');
-                    $serialNumber     = trim($row[2] ?? '');
-                    $deptName         = trim($row[3] ?? '');
-                    $vendorName       = trim($row[4] ?? '');
-                    $modelName        = trim($row[5] ?? '');
-                    $assetName        = trim($row[6] ?? '');
-                    $purchaseDateRaw  = trim($row[7] ?? '');
-
-                    if ($assignedUserName === '' && $categoryName === '' && $serialNumber === '' &&
-                        $deptName === '' && $vendorName === '' && $modelName === '' &&
-                        $assetName === '' && $purchaseDateRaw === '') {
-                        continue;
-                    }
-
-                    if ($serialNumber === '' || $assetName === '') {
-                        $failCount++;
-                        $failedRows[] = "Row $rowCount: Validation Failed (Missing Serial or Asset Name)";
-                        continue;
-                    }
-
-                    $assignedUserNameEsc = mysqli_real_escape_string($conn, $assignedUserName);
-                    $serialNumberEsc     = mysqli_real_escape_string($conn, $serialNumber);
-                    $assetNameEsc        = mysqli_real_escape_string($conn, $assetName);
-
-                    $dupRes = mysqli_query($conn, "SELECT asset_id FROM assets WHERE serial_number = '$serialNumberEsc' LIMIT 1");
-                    if ($dupRes && mysqli_num_rows($dupRes) > 0) {
-                        $failCount++;
-                        $failedRows[] = "Row $rowCount: Duplicate serial number ($serialNumber)";
-                        continue;
-                    }
-
-                    $category_id = getCsvCategoryId($conn, $categoryName);
-                    $vendor_id   = getCsvVendorId($conn, $vendorName);
-                    $location_id = getCsvLocationId($conn, $deptName);
-                    $model_id    = getCsvModelId($conn, $modelName, $category_id, $vendor_id);
-                    $status_id   = getCsvStatusId($conn, !empty($assignedUserName));
-
-                    $parsedDate = parsePurchaseDate($purchaseDateRaw);
-                    $purchaseDateSql = $parsedDate ? "'$parsedDate'" : "NULL";
-
-                    $insertAsset = "
-                        INSERT INTO assets (
-                            asset_name, model_id, serial_number, category_id, vendor_id, location_id, status_id, purchase_date, cost
-                        ) VALUES (
-                            '$assetNameEsc', " . ($model_id ? $model_id : "NULL") . ", '$serialNumberEsc',
-                            " . ($category_id ? $category_id : "NULL") . ", " . ($vendor_id ? $vendor_id : "NULL") . ",
-                            " . ($location_id ? $location_id : "NULL") . ", " . ($status_id ? $status_id : "NULL") . ",
-                            $purchaseDateSql, 0
-                        )";
-
-                    if (!mysqli_query($conn, $insertAsset)) {
-                        $failCount++;
-                        $failedRows[] = "Row $rowCount: Asset insert failed - " . mysqli_error($conn);
-                        continue;
-                    }
-
-                    $asset_id = mysqli_insert_id($conn);
-
-                    if ($assignedUserName !== '') {
-                        $userRes = mysqli_query($conn, "SELECT user_id FROM users WHERE name = '$assignedUserNameEsc' LIMIT 1");
-
-                        if ($userRes && mysqli_num_rows($userRes) > 0) {
-                            $userRow = mysqli_fetch_assoc($userRes);
-                            $user_id = (int)$userRow['user_id'];
-                            $assignQuery = "
-                                INSERT INTO asset_assignments (asset_id, user_id, assigned_date, returned_date, remarks) 
-                                VALUES ($asset_id, $user_id, CURDATE(), NULL, NULL)";
-
-                            if (!mysqli_query($conn, $assignQuery)) {
-                                $failedRows[] = "Row $rowCount: Asset inserted but assignment failed - " . mysqli_error($conn);
-                            }
-                        } else {
-                            $failedRows[] = "Row $rowCount: Asset inserted but user not found for assignment ($assignedUserName)";
-                        }
-                    }
-                    $successCount++;
-                }
-                fclose($handle);
-                $success_msg = "Import completed successfully. Assets Added: $successCount, Failed: $failCount";
-
-                if (!empty($failedRows)) {
-                    $error = implode("<br>", $failedRows);
-                }
-            } else {
-                $error = "Unable to open uploaded CSV file.";
-            }
-        }
-    } else {
-        $error = "Please select a CSV file.";
-    }
-}
-
-
-/* =========================================================
    FETCH DROPDOWNS
    ========================================================= */
 $main_categories = mysqli_query($conn, "SELECT category_id, category_name FROM asset_categories WHERE parent_id = 0 OR parent_id IS NULL ORDER BY category_name ASC");
@@ -328,6 +110,9 @@ if ($assigned_status_q && mysqli_num_rows($assigned_status_q) > 0) {
 /* =========================================================
    HANDLE SINGLE FORM SUBMIT
    ========================================================= */
+$error = "";
+$success_msg = "";
+
 if (isset($_POST['save_asset'])) {
 
     $asset_name      = trim($_POST['asset_name'] ?? '');
@@ -500,38 +285,18 @@ include("../../includes/sidebar.php");
     <?php if ($error != ""): ?>
         <div class="alert alert-danger shadow-sm border-0 d-flex align-items-center">
             <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i> 
-            <div><?= $error ?></div>
+            <div><?= htmlspecialchars($error) ?></div>
         </div>
     <?php endif; ?>
     
     <?php if ($success_msg != ""): ?>
         <div class="alert alert-success shadow-sm border-0 d-flex align-items-center">
             <i class="bi bi-check-circle-fill me-2 fs-5"></i> 
-            <div><?= $success_msg ?></div>
+            <div><?= htmlspecialchars($success_msg) ?></div>
         </div>
     <?php endif; ?>
 
-    <!-- 1. BULK IMPORT CSV CARD -->
-    <div class="card shadow-sm border-0 border-top border-success border-4 mb-4">
-        <div class="card-header bg-white py-3">
-            <h5 class="mb-0 text-dark fw-bold"><i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i> Bulk Import via CSV</h5>
-        </div>
-        <div class="card-body bg-light">
-            <form method="post" enctype="multipart/form-data" class="d-flex flex-column flex-md-row align-items-md-center gap-3">
-                <div class="flex-grow-1">
-                    <input type="file" name="asset_excel_file" class="form-control shadow-sm" accept=".csv" required>
-                </div>
-                <button type="submit" name="import_assets_excel" class="btn btn-success fw-bold shadow-sm px-4">
-                    <i class="bi bi-upload me-1"></i> Upload & Import
-                </button>
-            </form>
-            <div class="mt-3 text-muted small">
-                <i class="bi bi-info-circle-fill text-primary me-1"></i> <strong>Required CSV Column Order:</strong> Assigned User, Category, Serial Number, Department, Vendor, Model, Asset Name, Purchase Date (DD-MM-YYYY)
-            </div>
-        </div>
-    </div>
-
-    <!-- 2. SINGLE ASSET FORM CARD -->
+    <!-- ASSET FORM CARD -->
     <div class="card shadow-sm border-0 border-top border-primary border-4">
         <div class="card-header bg-white py-3">
             <h5 class="mb-0 text-dark fw-bold"><i class="bi bi-pc-display me-2 text-primary"></i> Add Single Asset</h5>
