@@ -22,7 +22,7 @@ if (!$category) {
     while (ob_get_level()) ob_end_clean(); // Clear buffer safely
     include("../../includes/header.php");
     include("../../includes/sidebar.php");
-    echo "<div class='container mt-4'><div class='alert alert-danger'>Category not found.</div></div>";
+    echo "<div class='container mt-4'><div class='alert alert-danger shadow-sm'><i class='bi bi-exclamation-triangle-fill me-2'></i> Category not found.</div></div>";
     include("../../includes/footer.php");
     exit();
 }
@@ -74,13 +74,13 @@ if (!empty($location)) {
 $where_sql = implode(' AND ', $where_clauses);
 
 /* =========================================================
-   MASTER SQL QUERY (Used for both Export and HTML View)
+   MASTER SQL QUERY (Used for HTML View and Exports)
    ========================================================= */
 $assets_query = "SELECT a.*, 
                         s.status_name, 
-                        l.dept_name, 
-                        m.model_name,
-                        u.name AS user_name
+                        l.dept_name, l.floor, 
+                        m.model_name, m.model_image,
+                        u.name AS assigned_user_name
                  FROM assets a 
                  LEFT JOIN asset_status s ON a.status_id = s.status_id 
                  LEFT JOIN locations l ON a.location_id = l.location_id 
@@ -92,10 +92,10 @@ $assets_query = "SELECT a.*,
 /* =========================================================
    EXPORT LOGIC (EXCEL & CSV) - EXECUTED BEFORE HTML
    ========================================================= */
-if (isset($_GET['export'])) {
+if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel'])) {
     
     // 1. Ruthlessly wipe ANY hidden spaces, HTML, or warnings
-    while (ob_get_level()) {
+    while (ob_get_level() > 0) {
         ob_end_clean();
     }
 
@@ -113,22 +113,24 @@ if (isset($_GET['export'])) {
         header('Pragma: no-cache');
         header('Expires: 0');
         
-        echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
-        echo '<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style>td{border:0.5pt solid #000;} th{background-color:#D3D3D3; font-weight:bold; border:0.5pt solid #000;}</style></head><body>';
-        echo '<table><tr><th colspan="6" style="font-size:14pt; text-align:left;">Assets in Category: ' . htmlspecialchars($category['category_name']) . '</th></tr>';
-        echo '<tr><th>Asset Name</th><th>User Name</th><th>Serial No</th><th>Model</th><th>Status</th><th>Location</th></tr>';
+        echo '<table border="1">';
+        echo '<tr><th colspan="7" style="font-size:14pt; text-align:left;">Assets in Category: ' . htmlspecialchars($category['category_name']) . '</th></tr>';
+        echo '<tr><th>Sr No</th><th>Asset Name</th><th>Serial No</th><th>Model</th><th>Status</th><th>Location</th><th>Assigned To</th></tr>';
         
+        $sr = 1;
         while ($r = mysqli_fetch_assoc($export_res)) {
             echo "<tr>
+                    <td>{$sr}</td>
                     <td>{$r['asset_name']}</td>
-                    <td>" . ($r['user_name'] ?? '-') . "</td>
                     <td>{$r['serial_number']}</td>
                     <td>" . ($r['model_name'] ?? 'N/A') . "</td>
                     <td>" . ($r['status_name'] ?? 'N/A') . "</td>
                     <td>" . ($r['dept_name'] ?? 'N/A') . "</td>
+                    <td>" . ($r['assigned_user_name'] ?? 'Not Assigned') . "</td>
                   </tr>";
+            $sr++;
         }
-        echo '</table></body></html>';
+        echo '</table>';
         exit();
     }
     
@@ -139,16 +141,18 @@ if (isset($_GET['export'])) {
         header('Expires: 0');
         
         $output = fopen('php://output', 'w');
-        fputcsv($output, ['Asset Name', 'User Name', 'Serial No', 'Model', 'Status', 'Location']);
+        fputcsv($output, ['Sr No', 'Asset Name', 'Serial No', 'Model', 'Status', 'Location', 'Assigned To']);
         
+        $sr = 1;
         while ($r = mysqli_fetch_assoc($export_res)) {
             fputcsv($output, [
+                $sr++,
                 $r['asset_name'],
-                $r['user_name'] ?? '-',
                 $r['serial_number'],
                 $r['model_name'] ?? 'N/A',
                 $r['status_name'] ?? 'N/A',
-                $r['dept_name'] ?? 'N/A'
+                $r['dept_name'] ?? 'N/A',
+                $r['assigned_user_name'] ?? 'Not Assigned'
             ]);
         }
         fclose($output);
@@ -167,53 +171,67 @@ $filtered_count = mysqli_num_rows($assets_result);
 $total_assets_query = mysqli_query($conn, "SELECT COUNT(*) as total FROM assets a WHERE $category_condition");
 $total_assets = mysqli_fetch_assoc($total_assets_query)['total'];
 
+// Generate clean Export URLs keeping filters intact
+$exportParams = $_GET;
+$exportParams['export'] = 'excel';
+$exportExcelUrl = '?' . http_build_query($exportParams);
+$exportParams['export'] = 'csv';
+$exportCsvUrl = '?' . http_build_query($exportParams);
+
 include("../../includes/header.php");
 include("../../includes/sidebar.php");
 ?>
 
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-4 mb-5">
     <!-- PAGE HEADER -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4 gap-3">
         <div>
-            <h2 class="mb-0">Category Profile</h2>
+            <h3 class="mb-0 text-dark"><i class="bi bi-folder-fill text-primary me-2"></i> Category Profile</h3>
             <nav aria-label="breadcrumb">
-                <ol class="breadcrumb mb-0">
+                <ol class="breadcrumb mb-0 mt-1">
                     <li class="breadcrumb-item"><a href="categories_list.php" class="text-decoration-none">Categories</a></li>
                     <li class="breadcrumb-item active" aria-current="page"><?= htmlspecialchars($category['category_name']) ?></li>
                 </ol>
             </nav>
         </div>
+        
         <div class="d-flex gap-2 flex-wrap">
-            <!-- Export Dropdown -->
-            <div class="dropdown">
-                <button class="btn btn-outline-dark dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                    <i class="bi bi-download"></i> Export
+            
+            <!-- PRINT LABELS BUTTON -->
+            <button type="button" class="btn btn-dark fw-bold shadow-sm" id="btnOpenLabelModal">
+                <i class="bi bi-qr-code-scan me-1"></i> Print Labels
+            </button>
+
+            <!-- EXPORT DROPDOWN WITH FIXED STYLING & NATIVE JS -->
+            <div class="dropdown position-relative d-inline-block">
+                <button class="btn btn-light bg-white border border-secondary text-dark dropdown-toggle fw-bold shadow-sm" type="button" id="btnExportDropdown">
+                    <i class="bi bi-download me-1"></i> Export
                 </button>
-                <ul class="dropdown-menu shadow">
-                    <li><a class="dropdown-item" href="javascript:void(0)" onclick="exportToPDF()"><i class="bi bi-file-earmark-pdf text-danger"></i> PDF</a></li>
-                    <!-- UPDATED LINKS: Added explicit categories_details.php -->
-                    <li><a class="dropdown-item" href="categories_details.php?id=<?= $id ?>&model=<?= urlencode($model) ?>&status=<?= urlencode($status) ?>&location=<?= urlencode($location) ?>&export=excel"><i class="bi bi-file-earmark-excel text-success"></i> Excel</a></li>
-                    <li><a class="dropdown-item" href="categories_details.php?id=<?= $id ?>&model=<?= urlencode($model) ?>&status=<?= urlencode($status) ?>&location=<?= urlencode($location) ?>&export=csv"><i class="bi bi-file-earmark-text text-primary"></i> CSV</a></li>
+                <ul class="dropdown-menu shadow" id="exportDropdownMenu" style="display: none; position: absolute; top: 100%; left: 0; z-index: 1000;">
+                    <li><a class="dropdown-item py-2 fw-bold" href="javascript:void(0)" onclick="exportToPDF()"><i class="bi bi-file-earmark-pdf text-danger me-2"></i> Export as PDF</a></li>
+                    <li><a class="dropdown-item py-2 fw-bold" href="<?= $exportExcelUrl ?>"><i class="bi bi-file-earmark-excel text-success me-2"></i> Export as Excel</a></li>
+                    <li><a class="dropdown-item py-2 fw-bold" href="<?= $exportCsvUrl ?>"><i class="bi bi-file-earmark-text text-primary me-2"></i> Export as CSV</a></li>
                 </ul>
             </div>
-            <a href="categories_edit.php?id=<?= $category['category_id'] ?>" class="btn btn-warning"><i class="bi bi-pencil-square"></i> Edit Category</a>
-            <a href="categories_list.php" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back to List</a>
+
+            <a href="categories_edit.php?id=<?= $category['category_id'] ?>" class="btn btn-warning fw-bold text-dark"><i class="bi bi-pencil-square me-1"></i> Edit Category</a>
+            <a href="categories_list.php" class="btn btn-secondary fw-bold"><i class="bi bi-arrow-left me-1"></i> Back</a>
         </div>
     </div>
 
     <div class="row">
         <!-- LEFT COLUMN: CATEGORY INFO -->
         <div class="col-xl-4 col-lg-5">
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="bi bi-folder-fill me-2"></i> Category Information</h5>
+            <div class="card shadow-sm mb-4 border-0 border-top border-primary border-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0 text-primary fw-bold"><i class="bi bi-info-circle-fill me-1"></i> Category Details</h5>
                 </div>
                 <div class="card-body">
                     <table class="table table-borderless table-sm mb-0">
                         <tbody>
                             <tr>
                                 <th width="40%" class="text-muted">Name:</th>
-                                <td class="fw-bold fs-5"><?= htmlspecialchars($category['category_name']) ?></td>
+                                <td class="fw-bold fs-5 text-dark"><?= htmlspecialchars($category['category_name']) ?></td>
                             </tr>
                             <tr>
                                 <th class="text-muted">Type:</th>
@@ -232,43 +250,45 @@ include("../../includes/sidebar.php");
                             </tr>
                             <?php endif; ?>
                             <tr>
-                                <th class="text-muted">Description:</th>
-                                <td><?= htmlspecialchars($category['description'] ?? 'No description provided.') ?></td>
+                                <th class="text-muted pb-0 pt-3" colspan="2">Description:</th>
                             </tr>
                             <tr>
-                                <th class="text-muted">Created At:</th>
-                                <td><?= !empty($category['created_at']) ? date('d M Y, h:i A', strtotime($category['created_at'])) : 'N/A' ?></td>
+                                <td colspan="2" class="pt-1">
+                                    <div class="bg-light p-2 border rounded small">
+                                        <?= nl2br(htmlspecialchars($category['description'] ?: 'No description provided.')) ?>
+                                    </div>
+                                </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
 
-            <div class="card shadow-sm mb-4 border-info">
-                <div class="card-body text-center">
-                    <h6 class="text-muted mb-2">Total Assets in this Category</h6>
-                    <h2 class="display-4 fw-bold text-info"><?= $total_assets ?></h2>
+            <div class="card shadow-sm mb-4 border-0 border-top border-info border-4 bg-info bg-opacity-10">
+                <div class="card-body text-center py-4">
+                    <h6 class="text-muted fw-bold mb-2 text-uppercase">Total Assets in Category</h6>
+                    <h1 class="display-3 fw-bolder text-info mb-0"><?= $total_assets ?></h1>
                 </div>
             </div>
 
             <?php if ($is_main_category): ?>
-            <div class="card shadow-sm mb-4">
+            <div class="card shadow-sm mb-4 border-0">
                 <div class="card-header bg-dark text-white">
-                    <h5 class="mb-0"><i class="bi bi-diagram-3 me-2"></i> Sub-Categories</h5>
+                    <h6 class="mb-0"><i class="bi bi-diagram-3 me-2"></i> Sub-Categories</h6>
                 </div>
                 <div class="card-body p-0">
                     <ul class="list-group list-group-flush">
                         <?php if (count($sub_cats) > 0): ?>
                             <?php foreach($sub_cats as $sc): ?>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <a href="categories_details.php?id=<?= $sc['category_id'] ?>" class="text-decoration-none fw-bold">
+                                <li class="list-group-item d-flex justify-content-between align-items-center bg-light">
+                                    <a href="categories_details.php?id=<?= $sc['category_id'] ?>" class="text-decoration-none fw-bold text-dark">
                                         <i class="bi bi-arrow-return-right text-muted me-2"></i> <?= htmlspecialchars($sc['category_name']) ?>
                                     </a>
-                                    <a href="categories_details.php?id=<?= $sc['category_id'] ?>" class="btn btn-sm btn-outline-primary">View</a>
+                                    <a href="categories_details.php?id=<?= $sc['category_id'] ?>" class="btn btn-sm btn-outline-primary fw-bold shadow-sm">View</a>
                                 </li>
                             <?php endforeach; ?>
                         <?php else: ?>
-                            <li class="list-group-item text-center text-muted py-3">No sub-categories created yet.</li>
+                            <li class="list-group-item text-center text-muted py-4 bg-light">No sub-categories created yet.</li>
                         <?php endif; ?>
                     </ul>
                 </div>
@@ -278,14 +298,15 @@ include("../../includes/sidebar.php");
 
         <!-- RIGHT COLUMN: SEARCH, FILTER & ASSETS LIST -->
         <div class="col-xl-8 col-lg-7">
-            <div class="card mb-4 shadow-sm">
+            <!-- FILTER FORM -->
+            <div class="card mb-4 shadow-sm border-0 bg-light">
                 <div class="card-body">
                     <form method="GET" class="row g-3">
                         <input type="hidden" name="id" value="<?= $id ?>">
 
                         <div class="col-md-3">
-                            <label class="form-label small">Model</label>
-                            <select name="model" class="form-select form-select-sm">
+                            <label class="form-label small fw-bold text-muted text-uppercase">Model</label>
+                            <select name="model" class="form-select form-select-sm shadow-sm">
                                 <option value="">All Models</option>
                                 <?php
                                 $mods = mysqli_query($conn, "SELECT DISTINCT m.model_id, m.model_name 
@@ -301,8 +322,8 @@ include("../../includes/sidebar.php");
                         </div>
 
                         <div class="col-md-3">
-                            <label class="form-label small">Status</label>
-                            <select name="status" class="form-select form-select-sm">
+                            <label class="form-label small fw-bold text-muted text-uppercase">Status</label>
+                            <select name="status" class="form-select form-select-sm shadow-sm">
                                 <option value="">All Status</option>
                                 <?php
                                 $sts_query = "SELECT DISTINCT s.status_id, s.status_name 
@@ -320,8 +341,8 @@ include("../../includes/sidebar.php");
                         </div>
 
                         <div class="col-md-3">
-                            <label class="form-label small">Location</label>
-                            <select name="location" class="form-select form-select-sm">
+                            <label class="form-label small fw-bold text-muted text-uppercase">Location</label>
+                            <select name="location" class="form-select form-select-sm shadow-sm">
                                 <option value="">All Locations</option>
                                 <?php
                                 $loc_query = "SELECT DISTINCT l.location_id, l.dept_name 
@@ -338,56 +359,195 @@ include("../../includes/sidebar.php");
                             </select>
                         </div>
 
-                        <div class="col-md-3 d-flex align-items-end">
-                            <button type="submit" class="btn btn-primary btn-sm me-1 w-100">Filter</button>
-                            <a href="categories_details.php?id=<?= $id ?>" class="btn btn-outline-secondary btn-sm w-100" title="Reset Filters">Reset</a>
+                        <div class="col-md-3 d-flex align-items-end gap-2">
+                            <button type="submit" class="btn btn-primary btn-sm w-100 shadow-sm fw-bold"><i class="bi bi-funnel"></i> Filter</button>
+                            <a href="categories_details.php?id=<?= $id ?>" class="btn btn-outline-secondary btn-sm w-100 shadow-sm text-dark">Reset</a>
                         </div>
                     </form>
                 </div>
             </div>
 
-            <div class="card shadow-sm">
-                <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Assets under "<?= htmlspecialchars($category['category_name']) ?>"</h5>
-                    <span class="badge bg-dark"><?= $filtered_count ?> Results</span>
+            <!-- TABLE AND MODAL SECTION -->
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold text-dark">Assets in this Category</h5>
+                    <span class="badge bg-dark rounded-pill px-3"><?= $filtered_count ?> Results</span>
                 </div>
                 <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover table-striped align-middle mb-0" id="assetsTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Asset Name</th>
-                                    <th>User Name</th>
-                                    <th>Serial No</th>
-                                    <th>Model</th>
-                                    <th>Status</th>
-                                    <th>Location</th>
-                                    <th class="text-center no-export">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if ($filtered_count > 0): ?>
-                                    <?php while($asset = mysqli_fetch_assoc($assets_result)): ?>
+                    
+                    <!-- FORM WRAPPER FOR LABEL GENERATION -->
+                    <!-- Points correctly to assets folder -->
+                    <form id="bulkLabelForm" action="../assets/generate_labels.php" method="POST" target="_blank">
+
+                        <!-- LABEL OPTIONS MODAL (Centered nicely at the top) -->
+                        <div class="modal" id="printLabelsModal" tabindex="-1" style="display:none; background: rgba(0,0,0,0.5); z-index: 1050; position: fixed; top: 0; left: 0; width: 100%; height: 100%; overflow: auto;">
+                          <div class="modal-dialog modal-dialog-centered" style="max-width: 500px; margin: 40px auto 0 auto;">
+                            <div class="modal-content border-0 shadow">
+                              <div class="modal-header bg-dark text-white border-0">
+                                <h5 class="modal-title"><i class="bi bi-printer me-2"></i> Label Settings</h5>
+                                <button type="button" class="btn-close btn-close-white" onclick="closeLabelModal()"></button>
+                              </div>
+                              <div class="modal-body bg-light">
+                                <h6 class="fw-bold text-muted text-uppercase mb-3"><i class="bi bi-upc-scan me-1"></i> 1. Select Code Type</h6>
+                                <div class="d-flex gap-4 mb-4 bg-white p-3 rounded border">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="code_type" id="codeBoth" value="both" checked>
+                                        <label class="form-check-label fw-semibold" for="codeBoth">Both</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="code_type" id="codeQR" value="qr">
+                                        <label class="form-check-label fw-semibold" for="codeQR">QR Only</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="code_type" id="codeBarcode" value="barcode">
+                                        <label class="form-check-label fw-semibold" for="codeBarcode">Barcode Only</label>
+                                    </div>
+                                </div>
+
+                                <h6 class="fw-bold text-muted text-uppercase mb-3"><i class="bi bi-list-check me-1"></i> 2. Details to Print</h6>
+                                <div class="row bg-white p-3 rounded border mx-0">
+                                    <div class="col-6 mb-2">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="label_fields[]" value="asset_name" id="f_name" checked>
+                                            <label class="form-check-label" for="f_name">Asset Name</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-6 mb-2">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="label_fields[]" value="serial_number" id="f_sn" checked>
+                                            <label class="form-check-label" for="f_sn">Serial No.</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-6 mb-2">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="label_fields[]" value="category" id="f_cat" checked>
+                                            <label class="form-check-label" for="f_cat">Category</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-6 mb-2">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="label_fields[]" value="model" id="f_model">
+                                            <label class="form-check-label" for="f_model">Model</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-6 mb-0">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="label_fields[]" value="location" id="f_loc">
+                                            <label class="form-check-label" for="f_loc">Location</label>
+                                        </div>
+                                    </div>
+                                </div>
+                              </div>
+                              <div class="modal-footer border-0 bg-white">
+                                <button type="button" class="btn btn-light border px-4" onclick="closeLabelModal()">Cancel</button>
+                                <button type="button" class="btn btn-success fw-bold px-4" onclick="submitLabelForm()"><i class="bi bi-check-circle me-1"></i> Generate Labels</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0" id="assetsTable">
+                                <thead class="table-light text-secondary">
+                                    <tr>
+                                        <th class="ps-3 border-bottom-0 no-export" style="width: 40px;">
+                                            <input class="form-check-input shadow-sm" type="checkbox" id="selectAll">
+                                        </th>
+                                        <th class="ps-2 border-bottom-0">#</th>
+                                        <th class="text-center border-bottom-0" style="width: 60px;">Image</th>
+                                        <th class="border-bottom-0">Asset Details</th>
+                                        <th class="border-bottom-0">Model</th>
+                                        <th class="border-bottom-0">Status & Location</th>
+                                        <th class="border-bottom-0">Assignment</th>
+                                        <th class="text-center border-bottom-0 no-export">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if ($filtered_count > 0): ?>
+                                        <?php $sr = 1; ?>
+                                        <?php while ($row = mysqli_fetch_assoc($assets_result)): ?>
+                                            <tr>
+                                                <td class="ps-3 no-export">
+                                                    <input class="form-check-input shadow-sm asset-checkbox" type="checkbox" name="asset_ids[]" value="<?= $row['asset_id'] ?>">
+                                                </td>
+                                                <td class="ps-2 text-muted fw-bold"><?= $sr++ ?></td>
+                                                
+                                                <td class="text-center">
+                                                    <?php if (!empty($row['model_image'])): ?>
+                                                        <div class="bg-white border rounded p-1 shadow-sm d-inline-block" style="width: 45px; height: 45px;">
+                                                            <img src="../../<?= htmlspecialchars($row['model_image']) ?>" alt="Model" style="width: 100%; height: 100%; object-fit: contain;">
+                                                        </div>
+                                                    <?php else: ?>
+                                                        <div class="bg-light border text-muted d-flex align-items-center justify-content-center rounded shadow-sm d-inline-flex" style="width: 45px; height: 45px;">
+                                                            <i class="bi bi-pc-display fs-5"></i>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </td>
+                                                
+                                                <td>
+                                                    <a href="../assets/asset_details.php?id=<?= $row['asset_id'] ?>" class="text-decoration-none fw-bold text-dark d-block">
+                                                        <?= htmlspecialchars($row['asset_name']) ?>
+                                                    </a>
+                                                    <div class="d-flex align-items-center mt-1">
+                                                        <code class="small text-primary bg-primary bg-opacity-10 px-2 py-1 rounded me-2"><?= htmlspecialchars($row['serial_number']) ?></code>
+                                                        <button class="btn btn-sm btn-light border py-0 px-1 text-muted" type="button" onclick="copyToClipboard('<?= htmlspecialchars($row['serial_number']) ?>')" title="Copy Serial Number">
+                                                            <i class="bi bi-clipboard"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                                
+                                                <td>
+                                                    <div class="text-dark fw-semibold text-truncate" style="max-width: 150px;" title="<?= htmlspecialchars($row['model_name'] ?? '') ?>">
+                                                        <?= htmlspecialchars($row['model_name'] ?? 'N/A') ?>
+                                                    </div>
+                                                </td>
+                                                
+                                                <td>
+                                                    <?php
+                                                    $badge_class = 'bg-secondary';
+                                                    if (($row['status_name'] ?? '') == 'Assigned') $badge_class = 'bg-primary';
+                                                    elseif (in_array(($row['status_name'] ?? ''), ['Available', 'Working'])) $badge_class = 'bg-success';
+                                                    elseif (($row['status_name'] ?? '') == 'Under Repair') $badge_class = 'bg-warning text-dark';
+                                                    elseif (in_array(($row['status_name'] ?? ''), ['Retired', 'Condemned'])) $badge_class = 'bg-danger';
+                                                    ?>
+                                                    <span class="badge <?= $badge_class ?> rounded-pill mb-1 d-inline-block">
+                                                        <?= htmlspecialchars($row['status_name'] ?? 'N/A') ?>
+                                                    </span>
+                                                    <div class="small text-dark fw-semibold">
+                                                        <i class="bi bi-geo-alt text-danger"></i>
+                                                        <?= htmlspecialchars($row['dept_name'] ?? 'N/A') ?>
+                                                        <?= !empty($row['floor']) ? " <span class='text-muted'>({$row['floor']})</span>" : "" ?>
+                                                    </div>
+                                                </td>
+                                                
+                                                <td>
+                                                    <?php if (!empty($row['assigned_user_name'])): ?>
+                                                        <div class="fw-bold text-dark"><i class="bi bi-person text-muted me-1"></i><?= htmlspecialchars($row['assigned_user_name']) ?></div>
+                                                    <?php else: ?>
+                                                        <span class="text-muted small"><i class="bi bi-dash-circle me-1"></i>Not Assigned</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                
+                                                <td class="text-center no-export">
+                                                    <div class="d-flex justify-content-center gap-2">
+                                                        <a href="../assets/asset_details.php?id=<?= $row['asset_id'] ?>" class="btn btn-sm btn-outline-primary shadow-sm" title="View Asset"><i class="bi bi-eye-fill"></i></a>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endwhile; ?>
+                                    <?php else: ?>
                                         <tr>
-                                            <td class="fw-bold"><?= htmlspecialchars($asset['asset_name']) ?></td>
-                                            <td><?= htmlspecialchars($asset['user_name'] ?? '-') ?></td>
-                                            <td><code><?= htmlspecialchars($asset['serial_number']) ?></code></td>
-                                            <td><?= htmlspecialchars($asset['model_name'] ?? 'N/A') ?></td>
-                                            <td><span class="badge bg-info text-dark"><?= htmlspecialchars($asset['status_name'] ?? 'N/A') ?></span></td>
-                                            <td><?= htmlspecialchars($asset['dept_name'] ?? 'N/A') ?></td>
-                                            <td class="text-center no-export">
-                                                <a href="../assets/asset_details.php?id=<?= $asset['asset_id'] ?>" class="btn btn-sm btn-outline-primary">View</a>
+                                            <td colspan="8" class="text-center py-5 text-muted">
+                                                <i class="bi bi-inboxes fs-1 d-block mb-3 opacity-50"></i>
+                                                <h5>No assets found.</h5>
+                                                <p class="mb-0">Try adjusting your filters.</p>
                                             </td>
                                         </tr>
-                                    <?php endwhile; ?>
-                                <?php else: ?>
-                                    <tr>
-                                        <td colspan="7" class="text-center py-4 text-muted">No assets found matching your criteria.</td>
-                                    </tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -395,11 +555,12 @@ include("../../includes/sidebar.php");
 </div>
 
 <!-- =========================================================
-     PDF EXPORT SCRIPT
+     PDF EXPORT SCRIPT & MULTI-SELECT JS
      ========================================================= -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 <script>
+    // JS PDF LOGIC
     function exportToPDF() {
         if (typeof window.jspdf === 'undefined') {
             alert("Error: The PDF library failed to load. Please check your internet connection.");
@@ -412,7 +573,7 @@ include("../../includes/sidebar.php");
         doc.setFontSize(16);
         doc.text("Assets in Category: <?= addslashes($category['category_name']) ?>", 14, 15);
 
-        // Temporarily hide the Action column
+        // Temporarily hide the Action column and checkboxes
         document.querySelectorAll('.no-export').forEach(function(el) {
             el.style.display = 'none';
         });
@@ -422,14 +583,14 @@ include("../../includes/sidebar.php");
             startY: 25,
             styles: {
                 fontSize: 9,
-                cellPadding: 2
+                cellPadding: 3
             },
             headStyles: {
                 fillColor: [52, 58, 64]
             }
         });
 
-        // Restore the Action column in the HTML view
+        // Restore the hidden elements
         document.querySelectorAll('.no-export').forEach(function(el) {
             el.style.display = '';
         });
@@ -437,6 +598,85 @@ include("../../includes/sidebar.php");
         const safeFilename = "<?= addslashes($category['category_name']) ?>".replace(/[^a-zA-Z0-9_-]/g, "_");
         doc.save("Category_Assets_" + safeFilename + "_<?= date('Y-m-d') ?>.pdf");
     }
+
+    // Modal and Checkbox Logic
+    function openLabelModal() {
+        document.getElementById('printLabelsModal').style.display = 'block';
+    }
+
+    function closeLabelModal() {
+        document.getElementById('printLabelsModal').style.display = 'none';
+    }
+
+    function submitLabelForm() {
+        document.getElementById('bulkLabelForm').submit();
+        closeLabelModal();
+    }
+
+    function copyToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(() => alert('Copied: ' + text));
+        } else {
+            let t = document.createElement("textarea");
+            t.value = text; t.style.position = "fixed"; t.style.left = "-9999px";
+            document.body.appendChild(t); t.focus(); t.select();
+            document.execCommand('copy'); t.remove(); alert('Copied: ' + text);
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+        // Export Dropdown Fallback Logic
+        const exportBtn = document.getElementById("btnExportDropdown");
+        const exportMenu = document.getElementById("exportDropdownMenu");
+
+        if (exportBtn && exportMenu) {
+            exportBtn.addEventListener("click", function(e) {
+                e.stopPropagation();
+                exportMenu.style.display = (exportMenu.style.display === "block") ? "none" : "block";
+            });
+
+            document.addEventListener("click", function(e) {
+                if (!exportBtn.contains(e.target) && !exportMenu.contains(e.target)) {
+                    exportMenu.style.display = "none";
+                }
+            });
+        }
+
+        // Print Labels and Checkbox Logic
+        const selectAll = document.getElementById("selectAll");
+        const checkboxes = document.querySelectorAll(".asset-checkbox");
+        const btnOpenModal = document.getElementById("btnOpenLabelModal");
+
+        btnOpenModal.addEventListener("click", function(e) {
+            const checkedCount = document.querySelectorAll(".asset-checkbox:checked").length;
+            if (checkedCount === 0) {
+                e.preventDefault();
+                alert("Please check the box next to at least one asset to print labels!");
+            } else {
+                openLabelModal();
+            }
+        });
+
+        if (selectAll) {
+            selectAll.addEventListener("change", function() {
+                checkboxes.forEach(cb => cb.checked = this.checked);
+            });
+        }
+
+        checkboxes.forEach(cb => {
+            cb.addEventListener("change", function() {
+                if (!this.checked) {
+                    selectAll.checked = false;
+                }
+                if (document.querySelectorAll(".asset-checkbox:checked").length === checkboxes.length && checkboxes.length > 0) {
+                    selectAll.checked = true;
+                }
+            });
+        });
+    });
 </script>
 
-<?php include("../../includes/footer.php"); ?>
+<?php 
+if (ob_get_length()) ob_end_flush();
+include("../../includes/footer.php"); 
+?>

@@ -15,6 +15,10 @@ function parsePurchaseDate($rawDate)
         [$dd, $mm, $yy] = explode('-', $rawDate);
         if (checkdate((int)$mm, (int)$dd, (int)$yy)) return "$yy-$mm-$dd";
     }
+    if (preg_match('/^\d{2}\.\d{2}\.\d{4}$/', $rawDate)) {
+        [$dd, $mm, $yy] = explode('.', $rawDate);
+        if (checkdate((int)$mm, (int)$dd, (int)$yy)) return "$yy-$mm-$dd";
+    }
     if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawDate)) return $rawDate;
     return null;
 }
@@ -28,15 +32,32 @@ function parseCsvLine($line)
     else return str_getcsv($line, ",");
 }
 
-function getCategoryId($conn, $categoryName)
+// FIXED: Upgraded to support creating BOTH Main and Sub Categories automatically from CSV
+function getCategoryId($conn, $mainCatName, $subCatName = '')
 {
-    $categoryName = trim($categoryName);
-    if ($categoryName === '') return null;
-    $categoryNameEsc = mysqli_real_escape_string($conn, $categoryName);
-    $res = mysqli_query($conn, "SELECT category_id FROM asset_categories WHERE category_name = '$categoryNameEsc' LIMIT 1");
-    if ($res && mysqli_num_rows($res) > 0) return (int)mysqli_fetch_assoc($res)['category_id'];
-    mysqli_query($conn, "INSERT INTO asset_categories (category_name) VALUES ('$categoryNameEsc')");
-    return mysqli_insert_id($conn);
+    $mainCatName = trim($mainCatName);
+    if ($mainCatName === '') return null;
+    
+    $mainEsc = mysqli_real_escape_string($conn, $mainCatName);
+    $resMain = mysqli_query($conn, "SELECT category_id FROM asset_categories WHERE category_name = '$mainEsc' AND (parent_id = 0 OR parent_id IS NULL) LIMIT 1");
+    if ($resMain && mysqli_num_rows($resMain) > 0) {
+        $mainId = (int)mysqli_fetch_assoc($resMain)['category_id'];
+    } else {
+        mysqli_query($conn, "INSERT INTO asset_categories (category_name, parent_id) VALUES ('$mainEsc', 0)");
+        $mainId = mysqli_insert_id($conn);
+    }
+
+    $subCatName = trim($subCatName);
+    if ($subCatName === '') return $mainId;
+
+    $subEsc = mysqli_real_escape_string($conn, $subCatName);
+    $resSub = mysqli_query($conn, "SELECT category_id FROM asset_categories WHERE category_name = '$subEsc' AND parent_id = '$mainId' LIMIT 1");
+    if ($resSub && mysqli_num_rows($resSub) > 0) {
+        return (int)mysqli_fetch_assoc($resSub)['category_id'];
+    } else {
+        mysqli_query($conn, "INSERT INTO asset_categories (category_name, parent_id) VALUES ('$subEsc', '$mainId')");
+        return mysqli_insert_id($conn);
+    }
 }
 
 function getLocationId($conn, $deptName)
@@ -103,21 +124,23 @@ if (isset($_POST['import_assets_excel'])) {
             $failCount = 0;
             while (($line = fgets($handle)) !== false) {
                 $rowCount++;
-                if ($rowCount == 1) continue;
+                if ($rowCount == 1) continue; // Skip header
                 $row = parseCsvLine($line);
                 if (empty($row)) continue;
 
+                // FIXED: Updated Array Mapping to perfectly match your 12-column CSV file!
                 $assetName        = trim($row[0] ?? '');
                 $serialNumber     = trim($row[1] ?? '');
-                $categoryName     = trim($row[2] ?? '');
-                $modelName        = trim($row[3] ?? '');
-                $vendorName       = trim($row[4] ?? '');
-                $deptName         = trim($row[5] ?? '');
-                $statusName       = trim($row[6] ?? '');
-                $purchaseDateRaw  = trim($row[7] ?? '');
-                $warrantyRaw      = trim($row[8] ?? '');
-                $costRaw          = trim($row[9] ?? '');
-                $assignedUserName = trim($row[10] ?? '');
+                $mainCategoryName = trim($row[2] ?? '');
+                $subCategoryName  = trim($row[3] ?? '');
+                $modelName        = trim($row[4] ?? '');
+                $vendorName       = trim($row[5] ?? '');
+                $deptName         = trim($row[6] ?? '');
+                $statusName       = trim($row[7] ?? '');
+                $purchaseDateRaw  = trim($row[8] ?? '');
+                $warrantyRaw      = trim($row[9] ?? '');
+                $costRaw          = trim($row[10] ?? '');
+                $assignedUserName = trim($row[11] ?? '');
 
                 if ($assetName === '' || $serialNumber === '') continue;
 
@@ -131,7 +154,8 @@ if (isset($_POST['import_assets_excel'])) {
                     continue;
                 }
 
-                $category_id = getCategoryId($conn, $categoryName);
+                // FIXED: Assigns main and subcategories
+                $category_id = getCategoryId($conn, $mainCategoryName, $subCategoryName);
                 $vendor_id   = getVendorId($conn, $vendorName);
                 $location_id = getLocationId($conn, $deptName);
                 $model_id    = getModelId($conn, $modelName, $category_id, $vendor_id);
@@ -139,10 +163,15 @@ if (isset($_POST['import_assets_excel'])) {
 
                 $parsedPurDate = parsePurchaseDate($purchaseDateRaw);
                 $purchaseDateSql = $parsedPurDate ? "'$parsedPurDate'" : "NULL";
+                
+                $parsedWarDate = parsePurchaseDate($warrantyRaw);
+                $warrantySql = $parsedWarDate ? "'$parsedWarDate'" : "NULL";
+
                 $costSql = is_numeric($costRaw) ? $costRaw : "0.00";
 
-                $insertAsset = "INSERT INTO assets (asset_name, model_id, serial_number, category_id, vendor_id, location_id, status_id, purchase_date, cost) 
-                                VALUES ('$assetNameEsc', " . ($model_id ?: "NULL") . ", '$serialNumberEsc', " . ($category_id ?: "NULL") . ", " . ($vendor_id ?: "NULL") . ", " . ($location_id ?: "NULL") . ", " . ($status_id ?: "NULL") . ", $purchaseDateSql, $costSql)";
+                // FIXED: Appended warranty_expiry to SQL insert
+                $insertAsset = "INSERT INTO assets (asset_name, model_id, serial_number, category_id, vendor_id, location_id, status_id, purchase_date, warranty_expiry, cost) 
+                                VALUES ('$assetNameEsc', " . ($model_id ?: "NULL") . ", '$serialNumberEsc', " . ($category_id ?: "NULL") . ", " . ($vendor_id ?: "NULL") . ", " . ($location_id ?: "NULL") . ", " . ($status_id ?: "NULL") . ", $purchaseDateSql, $warrantySql, $costSql)";
 
                 if (mysqli_query($conn, $insertAsset)) {
                     $asset_id = mysqli_insert_id($conn);
@@ -159,8 +188,12 @@ if (isset($_POST['import_assets_excel'])) {
                 }
             }
             fclose($handle);
-            $success_msg = "Import completed successfully. Assets Added: $successCount, Failed: $failCount";
+            $success_msg = "Import completed successfully. Assets Added: $successCount, Skipped (Duplicates): $failCount";
+        } else {
+            $error = "Failed to read the uploaded CSV file.";
         }
+    } else {
+        $error = "Please upload a valid CSV file.";
     }
 }
 
@@ -445,6 +478,20 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
         </div>
     </div>
 
+    <!-- ADDED: IMPORT SUCCESS / ERROR MESSAGES -->
+    <?php if (!empty($error)): ?>
+        <div class="alert alert-danger shadow-sm border-0 d-flex align-items-center mb-4">
+            <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i> 
+            <?= $error ?>
+        </div>
+    <?php endif; ?>
+    <?php if (!empty($success_msg)): ?>
+        <div class="alert alert-success shadow-sm border-0 d-flex align-items-center mb-4">
+            <i class="bi bi-check-circle-fill me-2 fs-5"></i> 
+            <?= $success_msg ?>
+        </div>
+    <?php endif; ?>
+
     <!-- DYNAMIC ALERTS -->
     <?php if (isset($_GET['msg'])): ?>
         <?php if ($_GET['msg'] == 'deleted'): ?>
@@ -461,7 +508,7 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
     <!-- FILTER FORM -->
     <div class="card mb-4 shadow-sm border-0 border-top border-primary border-4 bg-light">
         <div class="card-body">
-            <form method="GET" class="row g-3">
+            <form method="GET" class="row g-3" id="filterForm">
                 <div class="col-md-3">
                     <label class="form-label fw-bold text-muted small text-uppercase">Search</label>
                     <div class="input-group shadow-sm">
@@ -469,32 +516,52 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                         <input type="text" name="search" class="form-control border-start-0 ps-0" placeholder="Name / Serial / User..." value="<?= htmlspecialchars($search) ?>">
                     </div>
                 </div>
+                
                 <div class="col-md-2">
                     <label class="form-label fw-bold text-muted small text-uppercase">Category</label>
                     <select name="category" id="filter_category" class="form-select shadow-sm">
                         <option value="">All Categories</option>
                         <?php
-                        $cats = mysqli_query($conn, "SELECT * FROM asset_categories WHERE parent_id = 0 OR parent_id IS NULL ORDER BY category_name ASC");
-                        while ($c = mysqli_fetch_assoc($cats)) {
-                            $selected = ($category == $c['category_id']) ? 'selected' : '';
-                            echo "<option value='{$c['category_id']}' $selected>" . htmlspecialchars($c['category_name']) . "</option>";
+                        // Fetch Main Categories
+                        $main_cats = mysqli_query($conn, "SELECT * FROM asset_categories WHERE parent_id = 0 OR parent_id IS NULL ORDER BY category_name ASC");
+                        while ($mc = mysqli_fetch_assoc($main_cats)) {
+                            $selected = ($category == $mc['category_id']) ? 'selected' : '';
+                            echo "<option value='{$mc['category_id']}' $selected class='fw-bold'>" . htmlspecialchars($mc['category_name']) . "</option>";
+                            
+                            // Fetch Sub-Categories for this Main Category
+                            $sub_cats = mysqli_query($conn, "SELECT * FROM asset_categories WHERE parent_id = '{$mc['category_id']}' ORDER BY category_name ASC");
+                            while ($sc = mysqli_fetch_assoc($sub_cats)) {
+                                $sub_selected = ($category == $sc['category_id']) ? 'selected' : '';
+                                echo "<option value='{$sc['category_id']}' $sub_selected>&nbsp;&nbsp;&nbsp;↳ " . htmlspecialchars($sc['category_name']) . "</option>";
+                            }
                         }
                         ?>
                     </select>
                 </div>
+                
                 <div class="col-md-2">
                     <label class="form-label fw-bold text-muted small text-uppercase">Model</label>
                     <select name="model" id="filter_model" class="form-select shadow-sm">
                         <option value="">All Models</option>
                         <?php
-                        $mods = mysqli_query($conn, "SELECT * FROM asset_models ORDER BY model_name ASC");
+                        // UPDATED: Now fetches parent_id so we can filter models by Main Category as well!
+                        $mods = mysqli_query($conn, "
+                            SELECT m.model_id, m.model_name, m.category_id, c.parent_id 
+                            FROM asset_models m 
+                            LEFT JOIN asset_categories c ON m.category_id = c.category_id 
+                            ORDER BY m.model_name ASC
+                        ");
                         while ($m = mysqli_fetch_assoc($mods)) {
                             $selected = ($model == $m['model_id']) ? 'selected' : '';
-                            echo "<option value='{$m['model_id']}' data-category='{$m['category_id']}' $selected>" . htmlspecialchars($m['model_name']) . "</option>";
+                            $cat_id = $m['category_id'];
+                            $parent_id = !empty($m['parent_id']) ? $m['parent_id'] : $cat_id;
+                            
+                            echo "<option value='{$m['model_id']}' data-category='{$cat_id}' data-parent='{$parent_id}' $selected>" . htmlspecialchars($m['model_name']) . "</option>";
                         }
                         ?>
                     </select>
                 </div>
+                
                 <div class="col-md-2">
                     <label class="form-label fw-bold text-muted small text-uppercase">Status</label>
                     <select name="status" class="form-select shadow-sm fw-semibold text-primary">
@@ -508,6 +575,7 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                         ?>
                     </select>
                 </div>
+                
                 <div class="col-md-2">
                     <label class="form-label fw-bold text-muted small text-uppercase">Location</label>
                     <select name="location" class="form-select shadow-sm">
@@ -521,12 +589,76 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                         ?>
                     </select>
                 </div>
-                <div class="col-md-1 d-flex align-items-end">
+                
+                <div class="col-md-1 d-flex align-items-end gap-1">
                     <button type="submit" class="btn btn-primary w-100 shadow-sm fw-bold"><i class="bi bi-funnel"></i></button>
+                    <!-- Quick clear button to easily reset filters -->
+                    <a href="assets_list.php" class="btn btn-light border shadow-sm text-muted"><i class="bi bi-x-lg"></i></a>
                 </div>
             </form>
         </div>
     </div>
+
+    <!-- DYNAMIC MODEL FILTERING SCRIPT (FIXED) -->
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const catSelect = document.getElementById("filter_category");
+        const modelSelect = document.getElementById("filter_model");
+        const currentModelId = "<?= htmlspecialchars($model) ?>"; 
+        
+        // 1. Extract all models into a clean, safe array on page load
+        const allModels = [];
+        Array.from(modelSelect.options).forEach(opt => {
+            if (opt.value !== "") {
+                allModels.push({
+                    value: opt.value,
+                    text: opt.text,
+                    category: opt.getAttribute("data-category"),
+                    parent: opt.getAttribute("data-parent")
+                });
+            }
+        });
+
+        // 2. Function to rebuild the dropdown based on selected category
+        function filterModels() {
+            const selectedCat = catSelect.value;
+            
+            // Clear current dropdown
+            modelSelect.innerHTML = '<option value="">All Models</option>';
+            
+            let modelFound = false;
+
+            allModels.forEach(m => {
+                // Show model if: 
+                // A) No category is selected 
+                // B) Model is directly in this category 
+                // C) Model is in a sub-category of this main category
+                if (selectedCat === "" || m.category === selectedCat || m.parent === selectedCat) {
+                    const opt = document.createElement("option");
+                    opt.value = m.value;
+                    opt.textContent = m.text;
+                    opt.setAttribute("data-category", m.category);
+                    opt.setAttribute("data-parent", m.parent);
+                    
+                    if (m.value === currentModelId) {
+                        opt.selected = true;
+                        modelFound = true;
+                    }
+                    modelSelect.appendChild(opt);
+                }
+            });
+
+            // If the user changed the category and the previously selected model doesn't belong to it, reset the model dropdown
+            if (!modelFound && selectedCat !== "") {
+                modelSelect.value = "";
+            }
+        }
+
+        // 3. Listen for changes and run once immediately
+        catSelect.addEventListener("change", filterModels);
+        filterModels(); 
+    });
+    </script>
 
     <!-- TABLE AND MODAL SECTION -->
     <div class="card shadow-sm border-0">

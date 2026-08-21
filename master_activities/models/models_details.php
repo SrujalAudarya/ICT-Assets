@@ -8,7 +8,7 @@ include("../../config/db.php");
 $id = isset($_GET['id']) ? mysqli_real_escape_string($conn, $_GET['id']) : '0';
 
 /* ---------- MODEL BASIC INFO ---------- */
-// UPDATED: Joined asset_categories a second time to fetch the Parent Category Name
+// Joined asset_categories a second time to fetch the Parent Category Name
 $model_query = "
     SELECT m.*, 
            c.category_name, 
@@ -55,82 +55,59 @@ SELECT
     s.status_name, 
     l.dept_name
 FROM assets a
-
-LEFT JOIN asset_categories c 
-    ON a.category_id = c.category_id
-
-LEFT JOIN asset_status s 
-    ON a.status_id = s.status_id
-
-LEFT JOIN locations l 
-    ON a.location_id = l.location_id
-
-/* ✅ ONLY CURRENT ASSIGNMENT */
-LEFT JOIN asset_assignments asn 
-    ON a.asset_id = asn.asset_id
-    AND asn.returned_date IS NULL
-
-LEFT JOIN users u 
-    ON asn.user_id = u.user_id
-
+LEFT JOIN asset_categories c ON a.category_id = c.category_id
+LEFT JOIN asset_status s ON a.status_id = s.status_id
+LEFT JOIN locations l ON a.location_id = l.location_id
+/* ONLY CURRENT ASSIGNMENT */
+LEFT JOIN asset_assignments asn ON a.asset_id = asn.asset_id AND asn.returned_date IS NULL
+LEFT JOIN users u ON asn.user_id = u.user_id
 $where
-
-GROUP BY a.asset_id   /* ✅ EXTRA SAFETY */
-
+GROUP BY a.asset_id   
 ORDER BY a.asset_id DESC
 ";
 
 /* =========================================================
-   EXPORT LOGIC (EXCEL & CSV)
+   EXPORT LOGIC (EXCEL & CSV) - CORRECTED
    ========================================================= */
-if (isset($_GET['export'])) {
+if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel'])) {
+    
+    // Aggressively clear output buffer to prevent corrupted files
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
     $export_res = mysqli_query($conn, $assets_query);
     $clean_model_name = preg_replace('/[^A-Za-z0-9_\-]/', '_', $model['model_name']);
     $filename = "Model_Assets_" . $clean_model_name . "_" . date('Y-m-d');
+    $isExcel = ($_GET['export'] === 'excel');
 
-    /* ---------------- EXCEL EXPORT ---------------- */
-    if ($_GET['export'] == 'excel') {
-        header('Content-Type: application/vnd.ms-excel');
+    if ($isExcel) {
+        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '.xls"');
-        echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
-        echo '<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style>td{border:0.5pt solid #000;} th{background-color:#D3D3D3; font-weight:bold; border:0.5pt solid #000;}</style></head><body>';
-        echo '<table><tr><th colspan="6" style="font-size:14pt;">Assets in Model: ' . htmlspecialchars($model['model_name']) . '</th></tr>';
-        echo '<tr><th>Asset Name</th><th>User Name</th><th>Serial No</th><th>Category</th><th>Status</th><th>Location</th></tr>';
-        
-        while ($r = mysqli_fetch_assoc($export_res)) {
-            echo "<tr>
-                    <td>{$r['asset_name']}</td>
-                    <td>" . ($r['user_name'] ?? 'N/A') . "</td>
-                    <td>{$r['serial_number']}</td>
-                    <td>" . ($r['category_name'] ?? 'N/A') . "</td>
-                    <td>" . ($r['status_name'] ?? 'N/A') . "</td>
-                    <td>" . ($r['dept_name'] ?? 'N/A') . "</td>
-                  </tr>";
-        }
-        echo '</table></body></html>';
-        exit();
-    }
-    
-    /* ---------------- CSV EXPORT ---------------- */
-    if ($_GET['export'] == 'csv') {
+        $delimiter = "\t";
+    } else {
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
-        $output = fopen('php://output', 'w');
-        fputcsv($output, ['Asset Name', 'User Name', 'Serial No', 'Category', 'Status', 'Location']);
-        
-        while ($r = mysqli_fetch_assoc($export_res)) {
-            fputcsv($output, [
-                $r['asset_name'],
-                $r['user_name'] ?? 'N/A',
-                $r['serial_number'],
-                $r['category_name'] ?? 'N/A',
-                $r['status_name'] ?? 'N/A',
-                $r['dept_name'] ?? 'N/A'
-            ]);
-        }
-        fclose($output);
-        exit();
+        $delimiter = ",";
     }
+
+    $output = fopen('php://output', 'w');
+    fputcsv($output, ['Sr No', 'Asset Name', 'Serial No', 'Category', 'Status', 'Location', 'Assigned To'], $delimiter);
+
+    $sr = 1;
+    while ($r = mysqli_fetch_assoc($export_res)) {
+        fputcsv($output, [
+            $sr++,
+            $r['asset_name'],
+            $r['serial_number'],
+            $r['category_name'] ?? 'N/A',
+            $r['status_name'] ?? 'N/A',
+            $r['dept_name'] ?? 'N/A',
+            $r['user_name'] ?? 'Not Assigned'
+        ], $delimiter);
+    }
+    fclose($output);
+    exit();
 }
 
 include("../../includes/header.php");
@@ -142,6 +119,13 @@ $filtered_count = mysqli_num_rows($assets_result);
 // Total count for the model (unfiltered)
 $total_query = mysqli_query($conn, "SELECT COUNT(*) as total FROM assets WHERE model_id = '$id'");
 $total_assets = mysqli_fetch_assoc($total_query)['total'];
+
+// Generate Export URLs keeping filters intact
+$exportParams = $_GET;
+$exportParams['export'] = 'excel';
+$exportExcelUrl = '?' . http_build_query($exportParams);
+$exportParams['export'] = 'csv';
+$exportCsvUrl = '?' . http_build_query($exportParams);
 ?>
 
 <div class="container-fluid mt-4 mb-5">
@@ -151,17 +135,19 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
             <div class="text-muted mt-1 small">Detailed Profile & Linked Assets</div>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <!-- Export Dropdown -->
-            <div class="dropdown">
-                <button class="btn btn-outline-dark dropdown-toggle fw-bold" type="button" data-bs-toggle="dropdown">
-                    <i class="bi bi-download"></i> Export
+            
+            <!-- EXPORT DROPDOWN WITH FIXED HOVER STYLING & NATIVE JS -->
+            <div class="dropdown position-relative d-inline-block">
+                <button class="btn btn-light bg-white border border-secondary text-dark dropdown-toggle fw-bold shadow-sm" type="button" id="btnExportDropdown">
+                    <i class="bi bi-download me-1"></i> Export
                 </button>
-                <ul class="dropdown-menu shadow">
-                    <li><a class="dropdown-item py-2" href="javascript:void(0)" onclick="exportToPDF()"><i class="bi bi-file-earmark-pdf text-danger me-2"></i> Export as PDF</a></li>
-                    <li><a class="dropdown-item py-2" href="?id=<?= $id ?>&status=<?= $status ?>&location=<?= $location ?>&export=excel"><i class="bi bi-file-earmark-excel text-success me-2"></i> Export as Excel</a></li>
-                    <li><a class="dropdown-item py-2" href="?id=<?= $id ?>&status=<?= $status ?>&location=<?= $location ?>&export=csv"><i class="bi bi-file-earmark-text text-primary me-2"></i> Export as CSV</a></li>
+                <ul class="dropdown-menu shadow" id="exportDropdownMenu" style="display: none; position: absolute; top: 100%; left: 0; z-index: 1000;">
+                    <li><a class="dropdown-item py-2 fw-bold" href="javascript:void(0)" onclick="exportToPDF()"><i class="bi bi-file-earmark-pdf text-danger me-2"></i> Export as PDF</a></li>
+                    <li><a class="dropdown-item py-2 fw-bold" href="<?= $exportExcelUrl ?>"><i class="bi bi-file-earmark-excel text-success me-2"></i> Export as Excel (.xls)</a></li>
+                    <li><a class="dropdown-item py-2 fw-bold" href="<?= $exportCsvUrl ?>"><i class="bi bi-file-earmark-text text-primary me-2"></i> Export as CSV</a></li>
                 </ul>
             </div>
+            
             <a href="<?= ROUTE_MODELS_EDIT ?>?id=<?= $id ?>" class="btn btn-warning fw-bold text-dark"><i class="bi bi-pencil-fill me-1"></i> Edit Model</a>
             <a href="<?= ROUTE_MODELS ?>" class="btn btn-secondary fw-bold"><i class="bi bi-arrow-left me-1"></i> Back</a>
         </div>
@@ -208,7 +194,7 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                         <tr><th class="text-muted">Vendor</th><td><?= htmlspecialchars($model['vendor_name'] ?: 'N/A') ?></td></tr>
                         <tr><th class="text-muted">Contract No</th><td><code><?= htmlspecialchars($model['contract_no'] ?: 'N/A') ?></code></td></tr>
                         
-                        <!-- QUANTITY & COST (WITH AUTOMATIC TOTAL VALUE) -->
+                        <!-- QUANTITY & COST -->
                         <tr class="border-top"><th class="text-muted pt-2">Quantity</th><td class="pt-2"><span class="badge bg-secondary"><?= (int)($model['quantity'] ?? 0) ?> Units</span></td></tr>
                         <tr><th class="text-muted">Unit Cost</th><td class="text-success fw-bold">₹ <?= number_format((float)($model['cost'] ?? 0), 2) ?></td></tr>
                         <tr><th class="text-muted">Total Value</th><td class="text-primary fw-bold">₹ <?= number_format(((int)($model['quantity'] ?? 0) * (float)($model['cost'] ?? 0)), 2) ?></td></tr>
@@ -332,7 +318,6 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                                     <th class="border-bottom-0">Status</th>
                                     <th class="border-bottom-0">Location</th>
                                     <th class="border-bottom-0">Assigned To</th>
-                                    <!-- ADDED "no-export" CLASS HERE -->
                                     <th class="text-center no-export border-bottom-0">Action</th>
                                 </tr>
                             </thead>
@@ -367,7 +352,6 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
                                                 <?php endif; ?>
                                             </td>
 
-                                            <!-- ADDED "no-export" CLASS HERE -->
                                             <td class="text-center no-export">
                                                 <a href="../assets/asset_details.php?id=<?= $asset['asset_id'] ?>" class="btn btn-sm btn-outline-primary shadow-sm fw-bold">View</a>
                                             </td>
@@ -391,12 +375,17 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
 </div>
 
 <!-- =========================================================
-     PDF EXPORT SCRIPT
+     PDF EXPORT SCRIPT & DROPDOWN TOGGLE JS
      ========================================================= -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 <script>
+    // JS PDF LOGIC
     function exportToPDF() {
+        if (typeof window.jspdf === 'undefined') {
+            alert("PDF library is still loading. Please wait a moment.");
+            return;
+        }
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF('landscape');
 
@@ -428,6 +417,25 @@ $total_assets = mysqli_fetch_assoc($total_query)['total'];
         const safeFilename = "<?= addslashes($model['model_name']) ?>".replace(/[^a-zA-Z0-9_-]/g, "_");
         doc.save("Model_Assets_" + safeFilename + "_<?= date('Y-m-d') ?>.pdf");
     }
+
+    // EXPORT DROPDOWN FALLBACK LOGIC
+    document.addEventListener("DOMContentLoaded", function() {
+        const exportBtn = document.getElementById("btnExportDropdown");
+        const exportMenu = document.getElementById("exportDropdownMenu");
+
+        if (exportBtn && exportMenu) {
+            exportBtn.addEventListener("click", function(e) {
+                e.stopPropagation();
+                exportMenu.style.display = (exportMenu.style.display === "block") ? "none" : "block";
+            });
+
+            document.addEventListener("click", function(e) {
+                if (!exportBtn.contains(e.target) && !exportMenu.contains(e.target)) {
+                    exportMenu.style.display = "none";
+                }
+            });
+        }
+    });
 </script>
 
 <?php 

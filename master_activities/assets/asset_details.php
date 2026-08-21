@@ -105,7 +105,6 @@ include("../../includes/sidebar.php");
                                     <i class="bi bi-pc-display" style="font-size: 4rem;"></i>
                                 </div>
                             <?php endif; ?>
-                            <div class="mt-3 fw-bold text-muted small text-uppercase">Device Image</div>
                         </div>
                         <div class="col-md-9">
                             <table class="table table-borderless table-sm mb-0 align-middle">
