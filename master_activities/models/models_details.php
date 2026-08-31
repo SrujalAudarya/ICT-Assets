@@ -126,6 +126,13 @@ $exportParams['export'] = 'excel';
 $exportExcelUrl = '?' . http_build_query($exportParams);
 $exportParams['export'] = 'csv';
 $exportCsvUrl = '?' . http_build_query($exportParams);
+
+// =========================================================
+// SMART "ADD ASSET" LINK GENERATOR
+// =========================================================
+$main_cat_param = !empty($model['parent_id']) ? $model['parent_id'] : $model['category_id'];
+$sub_cat_param  = !empty($model['parent_id']) ? $model['category_id'] : '';
+$add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$main_cat_param}&sub_category_id={$sub_cat_param}";
 ?>
 
 <div class="container-fluid mt-4 mb-5">
@@ -136,6 +143,11 @@ $exportCsvUrl = '?' . http_build_query($exportParams);
         </div>
         <div class="d-flex gap-2 flex-wrap">
             
+            <!-- NEW SMART ADD ASSET BUTTON -->
+            <a href="<?= $add_asset_link ?>" class="btn btn-primary fw-bold shadow-sm">
+                <i class="bi bi-plus-circle me-1"></i> Add Asset
+            </a>
+
             <!-- EXPORT DROPDOWN WITH FIXED HOVER STYLING & NATIVE JS -->
             <div class="dropdown position-relative d-inline-block">
                 <button class="btn btn-light bg-white border border-secondary text-dark dropdown-toggle fw-bold shadow-sm" type="button" id="btnExportDropdown">
@@ -194,7 +206,7 @@ $exportCsvUrl = '?' . http_build_query($exportParams);
                         <tr><th class="text-muted">Vendor</th><td><?= htmlspecialchars($model['vendor_name'] ?: 'N/A') ?></td></tr>
                         <tr><th class="text-muted">Contract No</th><td><code><?= htmlspecialchars($model['contract_no'] ?: 'N/A') ?></code></td></tr>
                         
-                        <!-- QUANTITY & COST -->
+                        <!-- QUANTITY & COST (WITH AUTOMATIC TOTAL VALUE) -->
                         <tr class="border-top"><th class="text-muted pt-2">Quantity</th><td class="pt-2"><span class="badge bg-secondary"><?= (int)($model['quantity'] ?? 0) ?> Units</span></td></tr>
                         <tr><th class="text-muted">Unit Cost</th><td class="text-success fw-bold">₹ <?= number_format((float)($model['cost'] ?? 0), 2) ?></td></tr>
                         <tr><th class="text-muted">Total Value</th><td class="text-primary fw-bold">₹ <?= number_format(((int)($model['quantity'] ?? 0) * (float)($model['cost'] ?? 0)), 2) ?></td></tr>
@@ -374,13 +386,9 @@ $exportCsvUrl = '?' . http_build_query($exportParams);
     </div>
 </div>
 
-<!-- =========================================================
-     PDF EXPORT SCRIPT & DROPDOWN TOGGLE JS
-     ========================================================= -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 <script>
-    // JS PDF LOGIC
     function exportToPDF() {
         if (typeof window.jspdf === 'undefined') {
             alert("PDF library is still loading. Please wait a moment.");
@@ -392,7 +400,6 @@ $exportCsvUrl = '?' . http_build_query($exportParams);
         doc.setFontSize(16);
         doc.text("Assets in Model: <?= addslashes($model['model_name']) ?>", 14, 15);
 
-        // Temporarily hide the Action column
         document.querySelectorAll('.no-export').forEach(function(el) {
             el.style.display = 'none';
         });
@@ -400,16 +407,10 @@ $exportCsvUrl = '?' . http_build_query($exportParams);
         doc.autoTable({
             html: '#assetsTable',
             startY: 25,
-            styles: {
-                fontSize: 9,
-                cellPadding: 3
-            },
-            headStyles: {
-                fillColor: [52, 58, 64]
-            }
+            styles: { fontSize: 9, cellPadding: 3 },
+            headStyles: { fillColor: [52, 58, 64] }
         });
 
-        // Restore the Action column in the HTML view
         document.querySelectorAll('.no-export').forEach(function(el) {
             el.style.display = '';
         });
@@ -418,7 +419,6 @@ $exportCsvUrl = '?' . http_build_query($exportParams);
         doc.save("Model_Assets_" + safeFilename + "_<?= date('Y-m-d') ?>.pdf");
     }
 
-    // EXPORT DROPDOWN FALLBACK LOGIC
     document.addEventListener("DOMContentLoaded", function() {
         const exportBtn = document.getElementById("btnExportDropdown");
         const exportMenu = document.getElementById("exportDropdownMenu");

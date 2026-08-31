@@ -11,8 +11,6 @@ if (isset($_GET['action']) && $_GET['action'] == 'get_model_details') {
     header('Content-Type: application/json');
     $mod_id = (int)$_GET['model_id'];
 
-    // UPDATED: Now dynamically pulls the defaults DIRECTLY from the asset_models table!
-    // (Maps expiry_date to warranty_expiry so the Javascript understands it)
     $query = "SELECT vendor_id, purchase_date, expiry_date AS warranty_expiry, cost 
               FROM asset_models 
               WHERE model_id = $mod_id LIMIT 1";
@@ -276,8 +274,8 @@ include("../../includes/sidebar.php");
                 </ol>
             </nav>
         </div>
-        <a href="assets_list.php" class="btn btn-secondary shadow-sm fw-bold">
-            <i class="bi bi-arrow-left me-1"></i> Back to List
+        <a href="javascript:history.back()" class="btn btn-secondary shadow-sm fw-bold">
+            <i class="bi bi-arrow-left me-1"></i> Back
         </a>
     </div>
 
@@ -323,7 +321,7 @@ include("../../includes/sidebar.php");
                 </div>
 
                 <div class="row mb-4">
-                    <!-- MAIN CATEGORY -->
+                    <!-- MAIN CATEGORY (UPDATED TO PULL FROM $_GET IF PASSED VIA URL) -->
                     <div class="col-md-4 mb-3">
                         <label class="form-label fw-bold">Main Category <span class="text-danger">*</span></label>
                         <select name="main_category_id" id="main_category_id" class="form-select shadow-sm" required>
@@ -331,14 +329,14 @@ include("../../includes/sidebar.php");
                             <?php
                             mysqli_data_seek($main_categories, 0);
                             while ($row = mysqli_fetch_assoc($main_categories)) {
-                                $selected = (($_POST['main_category_id'] ?? '') == $row['category_id']) ? 'selected' : '';
+                                $selected = (($_POST['main_category_id'] ?? $_GET['main_category_id'] ?? '') == $row['category_id']) ? 'selected' : '';
                                 echo "<option value='{$row['category_id']}' $selected>" . htmlspecialchars($row['category_name']) . "</option>";
                             }
                             ?>
                         </select>
                     </div>
 
-                    <!-- SUB CATEGORY -->
+                    <!-- SUB CATEGORY (UPDATED TO PULL FROM $_GET IF PASSED VIA URL) -->
                     <div class="col-md-4 mb-3">
                         <label class="form-label fw-bold">Sub Category</label>
                         <select name="sub_category_id" id="sub_category_id" class="form-select shadow-sm">
@@ -346,14 +344,14 @@ include("../../includes/sidebar.php");
                             <?php
                             mysqli_data_seek($sub_categories, 0);
                             while ($row = mysqli_fetch_assoc($sub_categories)) {
-                                $selected = (($_POST['sub_category_id'] ?? '') == $row['category_id']) ? 'selected' : '';
+                                $selected = (($_POST['sub_category_id'] ?? $_GET['sub_category_id'] ?? '') == $row['category_id']) ? 'selected' : '';
                                 echo "<option value='{$row['category_id']}' data-parent='{$row['parent_id']}' $selected>" . htmlspecialchars($row['category_name']) . "</option>";
                             }
                             ?>
                         </select>
                     </div>
 
-                    <!-- MODEL -->
+                    <!-- MODEL (UPDATED TO PULL FROM $_GET IF PASSED VIA URL) -->
                     <div class="col-md-4 mb-3">
                         <label class="form-label fw-bold">Model</label>
                         <select name="model_id" id="model_id" class="form-select shadow-sm">
@@ -361,7 +359,7 @@ include("../../includes/sidebar.php");
                             <?php
                             mysqli_data_seek($models, 0);
                             while ($row = mysqli_fetch_assoc($models)) {
-                                $selected = (($_POST['model_id'] ?? '') == $row['model_id']) ? 'selected' : '';
+                                $selected = (($_POST['model_id'] ?? $_GET['model_id'] ?? '') == $row['model_id']) ? 'selected' : '';
                                 echo "<option value='{$row['model_id']}' data-category='{$row['category_id']}' $selected>" . htmlspecialchars($row['model_name']) . "</option>";
                             }
                             ?>
@@ -577,9 +575,9 @@ include("../../includes/sidebar.php");
         const allSubCats = Array.from(subCatSelect.options);
         const allModels = Array.from(modelSelect.options);
 
-        // Fetch previous PHP POST values for validation failure re-rendering
-        const prevSub = "<?= htmlspecialchars($_POST['sub_category_id'] ?? '') ?>";
-        const prevModel = "<?= htmlspecialchars($_POST['model_id'] ?? '') ?>";
+        // UPDATED: Now checks GET values too so it recognizes pre-filled URLs!
+        const prevSub = "<?= htmlspecialchars($_POST['sub_category_id'] ?? $_GET['sub_category_id'] ?? '') ?>";
+        const prevModel = "<?= htmlspecialchars($_POST['model_id'] ?? $_GET['model_id'] ?? '') ?>";
 
         function filterSubCategories() {
             const parentId = mainCatSelect.value;
@@ -631,12 +629,6 @@ include("../../includes/sidebar.php");
         mainCatSelect.addEventListener('change', filterSubCategories);
         subCatSelect.addEventListener('change', filterModels);
 
-        // Trigger filters on page load to set correct dropdown states
-        if (mainCatSelect.value !== "") {
-            filterSubCategories();
-        }
-
-
         // ----------------------------------------------------
         // NEW LOGIC: Model Auto-fill Data Fetching
         // ----------------------------------------------------
@@ -672,6 +664,18 @@ include("../../includes/sidebar.php");
                     console.error('Error fetching model details:', error);
                 });
         });
+
+        // ----------------------------------------------------
+        // INIT FILTERS (Magic Auto-Fill Trigger)
+        // ----------------------------------------------------
+        if (mainCatSelect.value !== "") {
+            filterSubCategories();
+            
+            // If the model was successfully pre-selected by the URL, trigger its auto-fetch script!
+            if (modelSelect.value !== "") {
+                modelSelect.dispatchEvent(new Event('change'));
+            }
+        }
 
         // ----------------------------------------------------
         // Location -> User Dynamic Filtering

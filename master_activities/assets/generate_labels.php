@@ -26,7 +26,6 @@ $show_location = in_array('location', $selected_fields);
 $where = "WHERE 1=1";
 
 if ($is_select_all) {
-    // Build the WHERE clause exactly matching your current table filters!
     $search   = trim($_POST['filter_search'] ?? '');
     $category = $_POST['filter_category'] ?? '';
     $status   = $_POST['filter_status'] ?? '';
@@ -57,27 +56,27 @@ if ($is_select_all) {
     if ($location != "") $where .= " AND a.location_id = " . (int)$location;
     if ($model != "") $where .= " AND a.model_id = " . (int)$model;
 
-    // Fetch ALL matching assets across ALL pages
     $query = "
-        SELECT a.asset_id, a.asset_name, a.serial_number, c.category_name, m.model_name, l.dept_name
+        SELECT a.asset_id, a.asset_name, a.serial_number, a.warranty_expiry, 
+               c.category_name, m.model_name, l.dept_name, s.status_name
         FROM assets a
         LEFT JOIN asset_categories c ON a.category_id = c.category_id
         LEFT JOIN asset_status s ON a.status_id = s.status_id
         LEFT JOIN locations l ON a.location_id = l.location_id
         LEFT JOIN asset_models m ON a.model_id = m.model_id
-        LEFT JOIN vendors v ON a.vendor_id = v.vendor_id
-        LEFT JOIN asset_assignments aa ON a.asset_id = aa.asset_id AND aa.returned_date IS NULL
-        LEFT JOIN users u ON aa.user_id = u.user_id
         $where
     ";
 } else {
     // Normal ID-based selection
     $ids = array_map('intval', $_POST['asset_ids']);
     $ids_string = implode(',', $ids);
+    
     $query = "
-        SELECT a.asset_id, a.asset_name, a.serial_number, c.category_name, m.model_name, l.dept_name
+        SELECT a.asset_id, a.asset_name, a.serial_number, a.warranty_expiry, 
+               c.category_name, m.model_name, l.dept_name, s.status_name
         FROM assets a
         LEFT JOIN asset_categories c ON a.category_id = c.category_id
+        LEFT JOIN asset_status s ON a.status_id = s.status_id
         LEFT JOIN locations l ON a.location_id = l.location_id
         LEFT JOIN asset_models m ON a.model_id = m.model_id
         WHERE a.asset_id IN ($ids_string)
@@ -135,15 +134,11 @@ $result = mysqli_query($conn, $query);
             margin: 0 auto;
         }
 
-        /* 
-           LABEL SIZING 
-           Standard thermal barcode label size ~ 100mm x 50mm (Approx 380px x 190px) 
-        */
         .label-card { 
             background: #fff; 
             border: 2px solid #000; 
-            width: 380px; 
-            height: 190px; 
+            width: 420px; 
+            height: 200px; 
             padding: 12px; 
             box-sizing: border-box; 
             display: flex; 
@@ -166,16 +161,16 @@ $result = mysqli_query($conn, $query);
 
         .label-info h5 { 
             margin: 0 0 5px 0; 
-            font-size: 13px; 
-            color: #555;
+            font-size: 14px; 
+            color: #333;
             text-transform: uppercase; 
             border-bottom: 1px solid #ccc;
             padding-bottom: 3px;
         }
 
         .label-info p { 
-            margin: 3px 0; 
-            font-size: 13px; 
+            margin: 2px 0; 
+            font-size: 12px; 
             color: #000;
             white-space: nowrap; 
             overflow: hidden; 
@@ -184,13 +179,14 @@ $result = mysqli_query($conn, $query);
 
         .barcode-svg { 
             width: 100%; 
-            height: 45px; 
-            margin-top: 10px; 
+            height: 40px; 
+            margin-top: 8px; 
         }
 
+        /* Adjusted for the larger, text-heavy QR code */
         .qr-code { 
-            width: 90px; 
-            height: 90px; 
+            width: 145px; 
+            height: 145px; 
             padding: 5px;
             border: 1px solid #ddd;
             border-radius: 5px;
@@ -200,7 +196,6 @@ $result = mysqli_query($conn, $query);
             justify-content: center;
         }
 
-        /* Center contents if only Barcode is selected */
         .layout-barcode-only .label-info { padding-right: 0; text-align: center; }
         .layout-barcode-only h5 { text-align: center; }
 
@@ -221,7 +216,76 @@ $result = mysqli_query($conn, $query);
     </div>
 
     <div class="label-grid">
-        <?php while($row = mysqli_fetch_assoc($result)): ?>
+        <?php 
+        while($row = mysqli_fetch_assoc($result)): 
+            
+            // -------------------------------------------------------------
+            // 1. CALCULATE WARRANTY LOGIC
+            // -------------------------------------------------------------
+            $warranty_text = "N/A";
+            if (!empty($row['warranty_expiry'])) {
+                $exp_time = strtotime($row['warranty_expiry']);
+                $days_left = floor(($exp_time - time()) / (60 * 60 * 24));
+                
+                if ($days_left < 0) {
+                    $warranty_text = date('d-M-Y', $exp_time) . " (Expired)";
+                } else {
+                    $warranty_text = date('d-M-Y', $exp_time) . " ({$days_left} days left)";
+                }
+            }
+
+            // -------------------------------------------------------------
+            // 2. FETCH ASSIGNMENT HISTORY & CURRENT USER
+            // -------------------------------------------------------------
+            $asset_id = $row['asset_id'];
+            $hist_q = mysqli_query($conn, "
+                SELECT u.name, asn.assigned_date, asn.returned_date 
+                FROM asset_assignments asn 
+                JOIN users u ON asn.user_id = u.user_id 
+                WHERE asn.asset_id = $asset_id 
+                ORDER BY asn.assigned_date DESC LIMIT 3
+            ");
+            
+            $history_str = "";
+            $current_user = "Not Assigned";
+            $is_first = true;
+
+            while($h = mysqli_fetch_assoc($hist_q)) {
+                $ret = $h['returned_date'] ? date('d-M-y', strtotime($h['returned_date'])) : "Present";
+                
+                // Using a hyphen instead of a dot to ensure 100% scanner compatibility
+                $history_str .= "- " . $h['name'] . " (" . date('d-M-y', strtotime($h['assigned_date'])) . " to $ret)\n";
+                
+                // If the most recent record has no return date, this person is the Current User
+                if ($is_first && empty($h['returned_date'])) {
+                    $current_user = $h['name'];
+                }
+                $is_first = false;
+            }
+            if(empty($history_str)) {
+                $history_str = "No history available.\n";
+            }
+
+            // -------------------------------------------------------------
+            // 3. COMPILE FULL, BEAUTIFUL TEXT BLOCK FOR THE NOTES APP
+            // -------------------------------------------------------------
+            $qr_text = "=== ASSET DETAILS ===\n";
+            $qr_text .= "Name: " . $row['asset_name'] . "\n";
+            $qr_text .= "Serial No: " . $row['serial_number'] . "\n";
+            $qr_text .= "Category: " . ($row['category_name'] ?? 'N/A') . "\n";
+            $qr_text .= "Model: " . ($row['model_name'] ?? 'N/A') . "\n";
+            $qr_text .= "Status: " . ($row['status_name'] ?? 'N/A') . "\n";
+            $qr_text .= "Location: " . ($row['dept_name'] ?? 'N/A') . "\n";
+            $qr_text .= "User: " . $current_user . "\n";
+            $qr_text .= "Warranty: " . $warranty_text . "\n";
+            $qr_text .= "\n=== HISTORY ===\n";
+            $qr_text .= trim($history_str);
+            
+            // Encode safely for JavaScript
+            $b64_qr_text = base64_encode($qr_text);
+            $safe_sn_text = htmlspecialchars($row['serial_number'], ENT_QUOTES, 'UTF-8');
+        ?>
+            
             <div class="label-card <?= ($code_type == 'barcode') ? 'layout-barcode-only' : '' ?>">
                 
                 <div class="label-info">
@@ -247,44 +311,65 @@ $result = mysqli_query($conn, $query);
                         <p><strong>Loc:</strong> <?= htmlspecialchars($row['dept_name'] ?? 'N/A') ?></p>
                     <?php endif; ?>
                     
-                    <!-- BARCODE -->
+                    <!-- BARCODE DATA TARGET -->
                     <?php if ($code_type == 'both' || $code_type == 'barcode'): ?>
-                        <svg class="barcode-svg" id="barcode-<?= $row['asset_id'] ?>"></svg>
+                        <svg class="barcode-svg js-barcode-target" data-serial="<?= $safe_sn_text ?>"></svg>
                     <?php endif; ?>
                 </div>
                 
-                <!-- QR CODE -->
+                <!-- QR CODE DATA TARGET -->
                 <?php if ($code_type == 'both' || $code_type == 'qr'): ?>
-                    <div class="qr-code" id="qrcode-<?= $row['asset_id'] ?>"></div>
+                    <div class="qr-code js-qrcode-target" data-base64="<?= $b64_qr_text ?>"></div>
                 <?php endif; ?>
             </div>
-            
-            <script>
-                <?php if ($code_type == 'both' || $code_type == 'qr'): ?>
-                // Generate QR Code (Encodes the Serial Number)
-                new QRCode(document.getElementById("qrcode-<?= $row['asset_id'] ?>"), {
-                    text: "<?= htmlspecialchars($row['serial_number']) ?>",
-                    width: 90,
-                    height: 90,
-                    colorDark : "#000000",
-                    colorLight : "#ffffff",
-                    correctLevel : QRCode.CorrectLevel.L
-                });
-                <?php endif; ?>
-                
-                <?php if ($code_type == 'both' || $code_type == 'barcode'): ?>
-                // Generate Barcode (Encodes the Serial Number)
-                JsBarcode("#barcode-<?= $row['asset_id'] ?>", "<?= htmlspecialchars($row['serial_number']) ?>", {
-                    format: "CODE128",
-                    width: 1.5,
-                    height: 35,
-                    displayValue: false,
-                    margin: 0
-                });
-                <?php endif; ?>
-            </script>
         <?php endwhile; ?>
     </div>
 
+    <!-- RENDER SCRIPT -->
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            
+            // 1. Render all QR Codes Safely
+            const qrElements = document.querySelectorAll('.js-qrcode-target');
+            qrElements.forEach(function(el) {
+                const b64Data = el.getAttribute('data-base64');
+                if (b64Data) {
+                    try {
+                        const decodedData = decodeURIComponent(escape(window.atob(b64Data)));
+                        new QRCode(el, {
+                            text: decodedData,
+                            width: 135,  // Big enough to hold the full text block
+                            height: 135, 
+                            colorDark : "#000000",
+                            colorLight : "#ffffff",
+                            correctLevel : QRCode.CorrectLevel.L // Low error correction keeps dots thick
+                        });
+                    } catch(e) {
+                        console.error("Failed to generate QR for data: ", b64Data, e);
+                    }
+                }
+            });
+
+            // 2. Render all Barcodes
+            const barcodeElements = document.querySelectorAll('.js-barcode-target');
+            barcodeElements.forEach(function(el) {
+                const snData = el.getAttribute('data-serial');
+                if (snData) {
+                    try {
+                        JsBarcode(el, snData, {
+                            format: "CODE128",
+                            width: 1.5,
+                            height: 35,
+                            displayValue: false,
+                            margin: 0
+                        });
+                    } catch(e) {
+                        console.error("Failed to generate Barcode for: ", snData, e);
+                    }
+                }
+            });
+
+        });
+    </script>
 </body>
 </html>
