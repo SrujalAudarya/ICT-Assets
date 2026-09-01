@@ -17,13 +17,15 @@ $query = "SELECT a.*,
                  m.model_name,
                  m.make_name,
                  m.supply_order_doc,
-                 m.model_image
+                 m.model_image,
+                 ms.status_name AS model_status_name
           FROM assets a
           LEFT JOIN asset_categories c ON a.category_id = c.category_id
           LEFT JOIN vendors v ON a.vendor_id = v.vendor_id
           LEFT JOIN locations l ON a.location_id = l.location_id
           LEFT JOIN asset_status s ON a.status_id = s.status_id
           LEFT JOIN asset_models m ON a.model_id = m.model_id
+          LEFT JOIN asset_status ms ON m.status_id = ms.status_id
           WHERE a.asset_id = '$id'";
 
 $result = mysqli_query($conn, $query);
@@ -87,11 +89,30 @@ include("../../includes/sidebar.php");
             
             <!-- ASSET INFORMATION CARD -->
             <div class="card shadow-sm border-0 border-top border-primary border-4 mb-4">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center py-3 gap-2">
                     <h5 class="mb-0 text-dark fw-bold"><i class="bi bi-pc-display me-2 text-primary"></i> General Information</h5>
-                    <span class="badge <?= $header_badge_class ?> rounded-pill px-3 py-2 fs-6 shadow-sm">
-                        <?= htmlspecialchars($asset['status_name'] ?? 'Unknown') ?>
-                    </span>
+                    
+                    <div class="d-flex align-items-center gap-2">
+                        <!-- Asset Status Badge -->
+                        <span class="badge <?= $header_badge_class ?> rounded-pill px-3 py-2 fs-6 shadow-sm">
+                            <?= htmlspecialchars($asset['status_name'] ?? 'Unknown') ?>
+                        </span>
+
+                        <!-- Model Lifecycle Status Badge -->
+                        <?php 
+                        $m_stat = $asset['model_status_name'] ?? '';
+                        if (!empty($m_stat)):
+                            $m_bg = 'bg-secondary';
+                            $m_icon = '';
+                            if ($m_stat == 'Working') { $m_bg = 'bg-success bg-opacity-75 text-white border border-success'; $m_icon = '<i class="bi bi-activity me-1"></i>'; }
+                            elseif ($m_stat == 'Provisional Survey Off') { $m_bg = 'bg-info text-dark border border-info'; $m_icon = '<i class="bi bi-clipboard-minus-fill me-1"></i>'; }
+                            elseif ($m_stat == 'Final Survey Off') { $m_bg = 'bg-dark text-white'; $m_icon = '<i class="bi bi-clipboard-x-fill me-1"></i>'; }
+                        ?>
+                            <span class="badge <?= $m_bg ?> rounded-pill px-3 py-2 fs-6 shadow-sm" title="Model Status">
+                                <?= $m_icon . htmlspecialchars($m_stat) ?>
+                            </span>
+                        <?php endif; ?>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="row align-items-center">
@@ -318,7 +339,6 @@ include("../../includes/sidebar.php");
 <!-- Copy to Clipboard Script -->
 <script>
 function copyToClipboard(text) {
-    // Modern approach (Requires HTTPS or localhost)
     if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(text).then(function() {
             alert('Copied Serial Number: ' + text);
@@ -326,28 +346,20 @@ function copyToClipboard(text) {
             console.error('Could not copy text: ', err);
         });
     } else {
-        // Fallback approach (Works on standard HTTP)
-        let textArea = document.createElement("textarea");
-        textArea.value = text;
-        
-        // Prevent scrolling to the bottom of the page
-        textArea.style.position = "fixed";
-        textArea.style.left = "-999999px";
-        textArea.style.top = "-999999px";
-        
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        
+        let t = document.createElement("textarea");
+        t.value = text;
+        t.style.position = "fixed";
+        t.style.left = "-9999px";
+        document.body.appendChild(t);
+        t.focus();
+        t.select();
         try {
             document.execCommand('copy');
             alert('Copied Serial Number: ' + text);
         } catch (err) {
-            console.error('Fallback copy failed: ', err);
             alert('Failed to copy. Please copy manually.');
         }
-        
-        textArea.remove();
+        t.remove();
     }
 }
 </script>

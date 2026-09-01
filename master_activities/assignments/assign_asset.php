@@ -5,6 +5,22 @@ include("../../includes/auth.php");
 include("../../config/db.php");
 
 /* =========================================================
+   AJAX HANDLER: FETCH USERS BY DEPARTMENT
+   ========================================================= */
+if (isset($_GET['action']) &&$_GET['action'] == 'get_department_users') {
+    header('Content-Type: application/json');
+    $dept_id = (int)$_GET['location_id'];$query = "SELECT user_id, name, role FROM users WHERE status = 'Active' AND location_id = $dept_id ORDER BY name ASC";
+    $res = mysqli_query($conn, $query);$users = [];
+    if ($res) {
+        while($row = mysqli_fetch_assoc($res)) {
+            $users[] =$row;
+        }
+    }
+    echo json_encode($users);
+    exit();
+}
+
+/* =========================================================
    GET PRESELECTED ASSET (if coming from asset_details page)
 ========================================================= */
 $preselected_asset_id = isset($_GET['asset_id']) ? (int)$_GET['asset_id'] : 0;
@@ -32,25 +48,21 @@ if ($preselected_asset_id > 0) {
 if (isset($_POST['assign'])) {
 
     // If asset came from asset details page, use hidden field
-    if (!empty($_POST['asset_id'])) {
-        $asset_id = mysqli_real_escape_string($conn, $_POST['asset_id']);
+    if (!empty($_POST['asset_id'])) {$asset_id = mysqli_real_escape_string($conn,$_POST['asset_id']);
     } else {
-        $asset_id = mysqli_real_escape_string($conn, $_POST['asset_id_select'] ?? '');
+        $asset_id = mysqli_real_escape_string($conn,$_POST['asset_id_select'] ?? '');
     }
 
-    $user_id = mysqli_real_escape_string($conn, $_POST['user_id']);
-    $date = mysqli_real_escape_string($conn, $_POST['assigned_date']);
-    $remarks = mysqli_real_escape_string($conn, $_POST['remarks']);
+    $user_id = mysqli_real_escape_string($conn,$_POST['user_id']);
+    $date = mysqli_real_escape_string($conn, $_POST['assigned_date']);$remarks = mysqli_real_escape_string($conn,$_POST['remarks']);
 
     /* ---------- VALIDATION ---------- */
-    if (empty($asset_id) || empty($user_id) || empty($date)) {
-        $error = "Please fill all required fields.";
+    if (empty($asset_id) || empty($user_id) || empty($date)) {$error = "Please fill all required fields.";
     } else {
 
         // Check asset exists
         $check_asset = mysqli_query($conn, "SELECT * FROM assets WHERE asset_id='$asset_id' LIMIT 1");
-        if (!$check_asset || mysqli_num_rows($check_asset) == 0) {
-            $error = "Selected asset not found.";
+        if (!$check_asset || mysqli_num_rows($check_asset) == 0) {$error = "Selected asset not found.";
         } else {
 
             // Check if asset is already actively assigned
@@ -61,8 +73,7 @@ if (isset($_POST['assign'])) {
                 LIMIT 1
             ");
 
-            if ($check_active && mysqli_num_rows($check_active) > 0) {
-                $error = "This asset is already assigned and not yet returned.";
+            if ($check_active && mysqli_num_rows($check_active) > 0) {$error = "This asset is already assigned and not yet returned.";
             } else {
 
                 // Get Assigned status ID
@@ -73,8 +84,7 @@ if (isset($_POST['assign'])) {
                 ");
                 $assigned_status = mysqli_fetch_assoc($assigned_status_query);
 
-                if (!$assigned_status) {
-                    $error = "Assigned status not found in asset_status table.";
+                if (!$assigned_status) {$error = "Assigned status not found in asset_status table.";
                 } else {
 
                     mysqli_begin_transaction($conn);
@@ -104,7 +114,7 @@ if (isset($_POST['assign'])) {
                         mysqli_commit($conn);
 
                         // Redirect back to asset details if assignment started from asset page
-                        if (!empty($_POST['return_to_asset']) && $_POST['return_to_asset'] == '1') {
+                        if (!empty($_POST['return_to_asset']) &&$_POST['return_to_asset'] == '1') {
                             header("Location: ../assets/asset_details.php?id=" . $asset_id . "&msg=assigned");
                             exit();
                         } else {
@@ -150,9 +160,7 @@ include("../../includes/sidebar.php");
                     <form method="post">
                         
                         <?php if($preselected_asset): ?>
-                            <!-- =====================================================
-                                 MODE A: Asset came from asset_details.php
-                            ====================================================== -->
+                            <!-- MODE A: Asset came from asset_details.php -->
                             <input type="hidden" name="asset_id" value="<?= $preselected_asset['asset_id'] ?>">
                             <input type="hidden" name="return_to_asset" value="1">
 
@@ -181,16 +189,13 @@ include("../../includes/sidebar.php");
                             </div>
 
                         <?php else: ?>
-                            <!-- =====================================================
-                                 MODE B: Opened directly from assignments module
-                            ====================================================== -->
+                            <!-- MODE B: Opened directly from assignments module -->
                             <div class="row mb-4">
                                 <div class="col-12">
                                     <label class="form-label text-muted fw-bold mb-1">Select Asset <span class="text-danger">*</span></label>
                                     <select name="asset_id_select" id="assetSelect" class="form-select" required>
                                         <option value="">Search by Asset Name, Serial No, or Prev User...</option>
                                         <?php
-                                        // SMART QUERY: Fetches available assets + grabs the LAST assigned user[cite: 1]
                                         $available = mysqli_query($conn, "
                                             SELECT a.asset_id, a.asset_name, a.serial_number, c.category_name,
                                                    (SELECT u.name 
@@ -203,9 +208,9 @@ include("../../includes/sidebar.php");
                                             LEFT JOIN asset_categories c ON a.category_id = c.category_id
                                             WHERE s.status_name IN ('Available','Spare','Working')
                                               AND a.asset_id NOT IN (
-                                                  SELECT asset_id 
-                                                  FROM asset_assignments 
-                                                  WHERE returned_date IS NULL
+                                                SELECT asset_id 
+                                                FROM asset_assignments 
+                                                WHERE returned_date IS NULL
                                               )
                                             ORDER BY c.category_name ASC, a.asset_name ASC
                                         ");
@@ -213,16 +218,13 @@ include("../../includes/sidebar.php");
                                         $current_category = "";
 
                                         while ($row = mysqli_fetch_assoc($available)) {
-                                            // Group by category for better UX
-                                            if ($row['category_name'] != $current_category) {
+                                            if ($row['category_name'] !=$current_category) {
                                                 if ($current_category != "") echo "</optgroup>";
-                                                $current_category = $row['category_name'];
+                                                $current_category =$row['category_name'];
                                                 echo "<optgroup label='" . htmlspecialchars($current_category) . "'>";
                                             }
                                             
-                                            $sn = htmlspecialchars($row['serial_number']);
-                                            $name = htmlspecialchars($row['asset_name']);
-                                            $prev = !empty($row['prev_user']) ? htmlspecialchars($row['prev_user']) : 'New / Unassigned';
+                                            $sn = htmlspecialchars($row['serial_number']);$name = htmlspecialchars($row['asset_name']);$prev = !empty($row['prev_user']) ? htmlspecialchars($row['prev_user']) : 'New / Unassigned';
 
                                             echo "<option value='{$row['asset_id']}'>SN: {$sn} | {$name} (Prev User: {$prev})</option>";
                                         }
@@ -233,12 +235,27 @@ include("../../includes/sidebar.php");
                             </div>
                         <?php endif; ?>
 
-                        <!-- USER & DATE ROW -->
+                        <!-- DEPARTMENT FILTER & USER SELECT ROW -->
                         <div class="row mb-4">
-                            <div class="col-md-7 mb-3 mb-md-0">
+                            <!-- DEPARTMENT FILTER -->
+                            <div class="col-md-5 mb-3 mb-md-0">
+                                <label class="form-label text-muted fw-bold mb-1">Filter by Department</label>
+                                <select id="departmentFilter" class="form-select">
+                                    <option value="">All Departments / Locations</option>
+                                    <?php
+                                    $depts = mysqli_query($conn, "SELECT location_id, dept_name FROM locations ORDER BY dept_name ASC");
+                                    while ($d = mysqli_fetch_assoc($depts)) {
+                                        echo "<option value='{$d['location_id']}'>" . htmlspecialchars($d['dept_name']) . "</option>";
+                                    }
+                                    ?>
+                                </select>
+                            </div>
+
+                            <!-- EMPLOYEE SELECT -->
+                            <div class="col-md-7">
                                 <label class="form-label text-muted fw-bold mb-1">Assign To Employee <span class="text-danger">*</span></label>
                                 <select name="user_id" id="userSelect" class="form-select" required>
-                                    <option value="">Search employee name or role...</option>
+                                    <option value="">Select department first or choose employee...</option>
                                     <?php
                                     $users = mysqli_query($conn, "SELECT user_id, name, role FROM users WHERE status = 'Active' ORDER BY name ASC");
                                     while ($row = mysqli_fetch_assoc($users)) {
@@ -249,7 +266,10 @@ include("../../includes/sidebar.php");
                                     ?>
                                 </select>
                             </div>
+                        </div>
 
+                        <!-- ASSIGNMENT DATE ROW -->
+                        <div class="row mb-4">
                             <div class="col-md-5">
                                 <label class="form-label text-muted fw-bold mb-1">Assignment Date <span class="text-danger">*</span></label>
                                 <div class="input-group">
@@ -285,6 +305,42 @@ include("../../includes/sidebar.php");
         </div>
     </div>
 </div>
+
+<!-- DEPARTMENT FILTER SCRIPT -->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const deptFilter = document.getElementById("departmentFilter");
+    const userSelect = document.getElementById("userSelect");
+
+    deptFilter.addEventListener("change", function () {
+        const locationId = this.value;
+
+        // Reset user dropdown
+        userSelect.innerHTML = '<option value="">Loading employees...</option>';
+
+        // Fetch users dynamically via AJAX
+        fetch(window.location.pathname + `?action=get_department_users&location_id=${locationId}`)
+            .then(response => response.json())
+            .then(data => {
+                userSelect.innerHTML = '<option value="">Select employee...</option>';
+                if (data.length > 0) {
+                    data.forEach(user => {
+                        const option = document.createElement("option");
+                        option.value = user.user_id;
+                        option.textContent = `${user.name} (${user.role})`;
+                        userSelect.appendChild(option);
+                    });
+                } else {
+                    userSelect.innerHTML = '<option value="">No active users found in this department</option>';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching users:', error);
+                userSelect.innerHTML = '<option value="">Error loading employees</option>';
+            });
+    });
+});
+</script>
 
 <?php 
 if (ob_get_length()) ob_end_flush();

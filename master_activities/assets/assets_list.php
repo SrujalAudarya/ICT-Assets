@@ -32,12 +32,11 @@ function parseCsvLine($line)
     else return str_getcsv($line, ",");
 }
 
-// FIXED: Upgraded to support creating BOTH Main and Sub Categories automatically from CSV
 function getCategoryId($conn, $mainCatName, $subCatName = '')
 {
     $mainCatName = trim($mainCatName);
     if ($mainCatName === '') return null;
-    
+
     $mainEsc = mysqli_real_escape_string($conn, $mainCatName);
     $resMain = mysqli_query($conn, "SELECT category_id FROM asset_categories WHERE category_name = '$mainEsc' AND (parent_id = 0 OR parent_id IS NULL) LIMIT 1");
     if ($resMain && mysqli_num_rows($resMain) > 0) {
@@ -124,11 +123,10 @@ if (isset($_POST['import_assets_excel'])) {
             $failCount = 0;
             while (($line = fgets($handle)) !== false) {
                 $rowCount++;
-                if ($rowCount == 1) continue; // Skip header
+                if ($rowCount == 1) continue;
                 $row = parseCsvLine($line);
                 if (empty($row)) continue;
 
-                // FIXED: Updated Array Mapping to perfectly match your 12-column CSV file!
                 $assetName        = trim($row[0] ?? '');
                 $serialNumber     = trim($row[1] ?? '');
                 $mainCategoryName = trim($row[2] ?? '');
@@ -154,7 +152,6 @@ if (isset($_POST['import_assets_excel'])) {
                     continue;
                 }
 
-                // FIXED: Assigns main and subcategories
                 $category_id = getCategoryId($conn, $mainCategoryName, $subCategoryName);
                 $vendor_id   = getVendorId($conn, $vendorName);
                 $location_id = getLocationId($conn, $deptName);
@@ -163,13 +160,12 @@ if (isset($_POST['import_assets_excel'])) {
 
                 $parsedPurDate = parsePurchaseDate($purchaseDateRaw);
                 $purchaseDateSql = $parsedPurDate ? "'$parsedPurDate'" : "NULL";
-                
+
                 $parsedWarDate = parsePurchaseDate($warrantyRaw);
                 $warrantySql = $parsedWarDate ? "'$parsedWarDate'" : "NULL";
 
                 $costSql = is_numeric($costRaw) ? $costRaw : "0.00";
 
-                // FIXED: Appended warranty_expiry to SQL insert
                 $insertAsset = "INSERT INTO assets (asset_name, model_id, serial_number, category_id, vendor_id, location_id, status_id, purchase_date, warranty_expiry, cost) 
                                 VALUES ('$assetNameEsc', " . ($model_id ?: "NULL") . ", '$serialNumberEsc', " . ($category_id ?: "NULL") . ", " . ($vendor_id ?: "NULL") . ", " . ($location_id ?: "NULL") . ", " . ($status_id ?: "NULL") . ", $purchaseDateSql, $warrantySql, $costSql)";
 
@@ -413,13 +409,18 @@ $countQuery = "
 $totalRows = mysqli_fetch_assoc(mysqli_query($conn, $countQuery))['total'] ?? 0;
 $totalPages = ceil($totalRows / $limit);
 
+// UPDATED QUERY: Added model status fetch (`ms.status_name AS model_status_name`)
 $query = "
-SELECT a.*, c.category_name, s.status_name, l.dept_name, l.floor, m.model_name, m.model_image, v.vendor_name, aa.assignment_id, aa.user_id, u.name AS assigned_user_name
+SELECT a.*, c.category_name, s.status_name, l.dept_name, l.floor, 
+       m.model_name, m.model_image, 
+       ms.status_name AS model_status_name,
+       v.vendor_name, aa.assignment_id, aa.user_id, u.name AS assigned_user_name
 FROM assets a
 LEFT JOIN asset_categories c ON a.category_id = c.category_id
 LEFT JOIN asset_status s ON a.status_id = s.status_id
 LEFT JOIN locations l ON a.location_id = l.location_id
 LEFT JOIN asset_models m ON a.model_id = m.model_id
+LEFT JOIN asset_status ms ON m.status_id = ms.status_id
 LEFT JOIN vendors v ON a.vendor_id = v.vendor_id
 LEFT JOIN asset_assignments aa ON a.asset_id = aa.asset_id AND aa.returned_date IS NULL
 LEFT JOIN users u ON aa.user_id = u.user_id
@@ -455,7 +456,7 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                 <i class="bi bi-qr-code-scan me-1"></i> Print Labels
             </button>
 
-            <!-- EXPORT DROPDOWN WITH NATIVE JS TOGGLE -->
+            <!-- EXPORT DROPDOWN -->
             <div class="dropdown position-relative d-inline-block">
                 <button class="btn btn-light bg-white border border-secondary text-dark dropdown-toggle fw-bold shadow-sm" type="button" id="btnExportDropdown">
                     <i class="bi bi-download me-1"></i> Export Inventory
@@ -478,31 +479,12 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
         </div>
     </div>
 
-    <!-- ADDED: IMPORT SUCCESS / ERROR MESSAGES -->
+    <!-- DYNAMIC ALERTS -->
     <?php if (!empty($error)): ?>
-        <div class="alert alert-danger shadow-sm border-0 d-flex align-items-center mb-4">
-            <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i> 
-            <?= $error ?>
-        </div>
+        <div class="alert alert-danger shadow-sm border-0 d-flex align-items-center mb-4"><i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i> <?= $error ?></div>
     <?php endif; ?>
     <?php if (!empty($success_msg)): ?>
-        <div class="alert alert-success shadow-sm border-0 d-flex align-items-center mb-4">
-            <i class="bi bi-check-circle-fill me-2 fs-5"></i> 
-            <?= $success_msg ?>
-        </div>
-    <?php endif; ?>
-
-    <!-- DYNAMIC ALERTS -->
-    <?php if (isset($_GET['msg'])): ?>
-        <?php if ($_GET['msg'] == 'deleted'): ?>
-            <div class="alert alert-success shadow-sm border-0 d-flex align-items-center mb-4"><i class="bi bi-trash-fill me-2 fs-5"></i> Asset completely deleted from inventory.</div>
-        <?php elseif ($_GET['msg'] == 'cannot_delete_assigned'): ?>
-            <div class="alert alert-warning shadow-sm border-0 d-flex align-items-center mb-4"><i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i> <strong>Action Blocked:</strong> Cannot delete this asset because it is currently assigned to a user.</div>
-        <?php elseif ($_GET['msg'] == 'updated'): ?>
-            <div class="alert alert-success shadow-sm border-0 d-flex align-items-center mb-4"><i class="bi bi-check-circle-fill me-2 fs-5"></i> Asset details updated successfully.</div>
-        <?php elseif ($_GET['msg'] == 'error'): ?>
-            <div class="alert alert-danger shadow-sm border-0 d-flex align-items-center mb-4"><i class="bi bi-x-circle-fill me-2 fs-5"></i> <strong>Error:</strong> <?= htmlspecialchars($_GET['err_detail'] ?? 'Unknown database error occurred.') ?></div>
-        <?php endif; ?>
+        <div class="alert alert-success shadow-sm border-0 d-flex align-items-center mb-4"><i class="bi bi-check-circle-fill me-2 fs-5"></i> <?= $success_msg ?></div>
     <?php endif; ?>
 
     <!-- FILTER FORM -->
@@ -516,19 +498,17 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                         <input type="text" name="search" class="form-control border-start-0 ps-0" placeholder="Name / Serial / User..." value="<?= htmlspecialchars($search) ?>">
                     </div>
                 </div>
-                
+
                 <div class="col-md-2">
                     <label class="form-label fw-bold text-muted small text-uppercase">Category</label>
                     <select name="category" id="filter_category" class="form-select shadow-sm">
                         <option value="">All Categories</option>
                         <?php
-                        // Fetch Main Categories
                         $main_cats = mysqli_query($conn, "SELECT * FROM asset_categories WHERE parent_id = 0 OR parent_id IS NULL ORDER BY category_name ASC");
                         while ($mc = mysqli_fetch_assoc($main_cats)) {
                             $selected = ($category == $mc['category_id']) ? 'selected' : '';
                             echo "<option value='{$mc['category_id']}' $selected class='fw-bold'>" . htmlspecialchars($mc['category_name']) . "</option>";
-                            
-                            // Fetch Sub-Categories for this Main Category
+
                             $sub_cats = mysqli_query($conn, "SELECT * FROM asset_categories WHERE parent_id = '{$mc['category_id']}' ORDER BY category_name ASC");
                             while ($sc = mysqli_fetch_assoc($sub_cats)) {
                                 $sub_selected = ($category == $sc['category_id']) ? 'selected' : '';
@@ -538,13 +518,12 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                         ?>
                     </select>
                 </div>
-                
+
                 <div class="col-md-2">
                     <label class="form-label fw-bold text-muted small text-uppercase">Model</label>
                     <select name="model" id="filter_model" class="form-select shadow-sm">
                         <option value="">All Models</option>
                         <?php
-                        // UPDATED: Now fetches parent_id so we can filter models by Main Category as well!
                         $mods = mysqli_query($conn, "
                             SELECT m.model_id, m.model_name, m.category_id, c.parent_id 
                             FROM asset_models m 
@@ -555,19 +534,20 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                             $selected = ($model == $m['model_id']) ? 'selected' : '';
                             $cat_id = $m['category_id'];
                             $parent_id = !empty($m['parent_id']) ? $m['parent_id'] : $cat_id;
-                            
+
                             echo "<option value='{$m['model_id']}' data-category='{$cat_id}' data-parent='{$parent_id}' $selected>" . htmlspecialchars($m['model_name']) . "</option>";
                         }
                         ?>
                     </select>
                 </div>
-                
+
+                <!-- STATUS FILTER (EXCLUDING ACTIVE & INACTIVE) -->
                 <div class="col-md-2">
                     <label class="form-label fw-bold text-muted small text-uppercase">Status</label>
                     <select name="status" class="form-select shadow-sm fw-semibold text-primary">
                         <option value="">All Statuses</option>
                         <?php
-                        $sts = mysqli_query($conn, "SELECT * FROM asset_status WHERE status_name IN ('Assigned', 'Available') ORDER BY status_name ASC");
+                        $sts = mysqli_query($conn, "SELECT * FROM asset_status WHERE status_name NOT IN ('Active', 'Inactive') ORDER BY status_name ASC");
                         while ($s = mysqli_fetch_assoc($sts)) {
                             $selected = ($status == $s['status_id']) ? 'selected' : '';
                             echo "<option value='{$s['status_id']}' $selected>" . htmlspecialchars($s['status_name']) . "</option>";
@@ -575,7 +555,7 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                         ?>
                     </select>
                 </div>
-                
+
                 <div class="col-md-2">
                     <label class="form-label fw-bold text-muted small text-uppercase">Location</label>
                     <select name="location" class="form-select shadow-sm">
@@ -589,84 +569,20 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                         ?>
                     </select>
                 </div>
-                
+
                 <div class="col-md-1 d-flex align-items-end gap-1">
                     <button type="submit" class="btn btn-primary w-100 shadow-sm fw-bold"><i class="bi bi-funnel"></i></button>
-                    <!-- Quick clear button to easily reset filters -->
                     <a href="assets_list.php" class="btn btn-light border shadow-sm text-muted"><i class="bi bi-x-lg"></i></a>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- DYNAMIC MODEL FILTERING SCRIPT (FIXED) -->
-    <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        const catSelect = document.getElementById("filter_category");
-        const modelSelect = document.getElementById("filter_model");
-        const currentModelId = "<?= htmlspecialchars($model) ?>"; 
-        
-        // 1. Extract all models into a clean, safe array on page load
-        const allModels = [];
-        Array.from(modelSelect.options).forEach(opt => {
-            if (opt.value !== "") {
-                allModels.push({
-                    value: opt.value,
-                    text: opt.text,
-                    category: opt.getAttribute("data-category"),
-                    parent: opt.getAttribute("data-parent")
-                });
-            }
-        });
-
-        // 2. Function to rebuild the dropdown based on selected category
-        function filterModels() {
-            const selectedCat = catSelect.value;
-            
-            // Clear current dropdown
-            modelSelect.innerHTML = '<option value="">All Models</option>';
-            
-            let modelFound = false;
-
-            allModels.forEach(m => {
-                // Show model if: 
-                // A) No category is selected 
-                // B) Model is directly in this category 
-                // C) Model is in a sub-category of this main category
-                if (selectedCat === "" || m.category === selectedCat || m.parent === selectedCat) {
-                    const opt = document.createElement("option");
-                    opt.value = m.value;
-                    opt.textContent = m.text;
-                    opt.setAttribute("data-category", m.category);
-                    opt.setAttribute("data-parent", m.parent);
-                    
-                    if (m.value === currentModelId) {
-                        opt.selected = true;
-                        modelFound = true;
-                    }
-                    modelSelect.appendChild(opt);
-                }
-            });
-
-            // If the user changed the category and the previously selected model doesn't belong to it, reset the model dropdown
-            if (!modelFound && selectedCat !== "") {
-                modelSelect.value = "";
-            }
-        }
-
-        // 3. Listen for changes and run once immediately
-        catSelect.addEventListener("change", filterModels);
-        filterModels(); 
-    });
-    </script>
-
     <!-- TABLE AND MODAL SECTION -->
     <div class="card shadow-sm border-0">
         <div class="card-body p-0">
-            <!-- FORM WRAPPER FOR CHECKBOXES -->
             <form id="bulkLabelForm" action="generate_labels.php" method="POST" target="_blank">
 
-                <!-- HIDDEN INPUTS FOR ALL-PAGES LOGIC -->
                 <input type="hidden" name="select_all_pages" id="selectAllPagesInput" value="0">
                 <input type="hidden" name="filter_search" value="<?= htmlspecialchars($search) ?>">
                 <input type="hidden" name="filter_category" value="<?= htmlspecialchars($category) ?>">
@@ -674,7 +590,7 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                 <input type="hidden" name="filter_status" value="<?= htmlspecialchars($status) ?>">
                 <input type="hidden" name="filter_location" value="<?= htmlspecialchars($location) ?>">
 
-                <!-- LABEL OPTIONS MODAL (Centered nicely at the top) -->
+                <!-- LABEL OPTIONS MODAL -->
                 <div class="modal" id="printLabelsModal" tabindex="-1" style="display:none; background: rgba(0,0,0,0.5); z-index: 1050; position: fixed; top: 0; left: 0; width: 100%; height: 100%; overflow: auto;">
                     <div class="modal-dialog modal-dialog-centered" style="max-width: 500px; margin: 40px auto 0 auto;">
                         <div class="modal-content border-0 shadow">
@@ -696,40 +612,6 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                                     <div class="form-check">
                                         <input class="form-check-input" type="radio" name="code_type" id="codeBarcode" value="barcode">
                                         <label class="form-check-label fw-semibold" for="codeBarcode">Barcode Only</label>
-                                    </div>
-                                </div>
-
-                                <h6 class="fw-bold text-muted text-uppercase mb-3"><i class="bi bi-list-check me-1"></i> 2. Details to Print</h6>
-                                <div class="row bg-white p-3 rounded border mx-0">
-                                    <div class="col-6 mb-2">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" name="label_fields[]" value="asset_name" id="f_name" checked>
-                                            <label class="form-check-label" for="f_name">Asset Name</label>
-                                        </div>
-                                    </div>
-                                    <div class="col-6 mb-2">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" name="label_fields[]" value="serial_number" id="f_sn" checked>
-                                            <label class="form-check-label" for="f_sn">Serial No.</label>
-                                        </div>
-                                    </div>
-                                    <div class="col-6 mb-2">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" name="label_fields[]" value="category" id="f_cat" checked>
-                                            <label class="form-check-label" for="f_cat">Category</label>
-                                        </div>
-                                    </div>
-                                    <div class="col-6 mb-2">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" name="label_fields[]" value="model" id="f_model">
-                                            <label class="form-check-label" for="f_model">Model</label>
-                                        </div>
-                                    </div>
-                                    <div class="col-6 mb-0">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" name="label_fields[]" value="location" id="f_loc">
-                                            <label class="form-check-label" for="f_loc">Location</label>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -758,11 +640,9 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                             </tr>
                         </thead>
                         <tbody>
-                            <!-- MULTI-PAGE SELECT ALL BANNER -->
                             <tr id="selectAllBanner" style="display: none; background-color: #e3f2fd;">
                                 <td colspan="8" class="text-center py-3 border-bottom-0">
                                     <span id="selectAllText" class="text-dark">All <?= min($limit, $totalRows) ?> assets on this page are selected.</span>
-                                    <a href="javascript:void(0);" id="selectAllPagesBtn" class="fw-bold text-primary text-decoration-none ms-2">Select all <?= $totalRows ?> assets matching your filter.</a>
                                 </td>
                             </tr>
 
@@ -790,35 +670,71 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                                                 <?= htmlspecialchars($row['asset_name']) ?>
                                             </a>
                                             <div class="d-flex align-items-center mt-1">
-                                                <code class="small text-primary bg-primary bg-opacity-10 px-2 py-1 rounded me-2" id="sn-<?= $row['asset_id'] ?>"><?= htmlspecialchars($row['serial_number']) ?></code>
-                                                <button class="btn btn-sm btn-light border py-0 px-1 text-muted" type="button" onclick="copyToClipboard('<?= htmlspecialchars($row['serial_number']) ?>')" title="Copy Serial Number">
-                                                    <i class="bi bi-clipboard"></i>
-                                                </button>
+                                                <code class="small text-primary bg-primary bg-opacity-10 px-2 py-1 rounded me-2"><?= htmlspecialchars($row['serial_number']) ?></code>
                                             </div>
                                         </td>
                                         <td>
                                             <span class="badge bg-secondary mb-1"><?= htmlspecialchars($row['category_name'] ?? 'N/A') ?></span>
-                                            <div class="small text-muted text-truncate" style="max-width: 180px;" title="<?= htmlspecialchars($row['model_name'] ?? '') ?>">
+                                            <div class="small text-muted text-truncate" style="max-width: 180px;">
                                                 <?= htmlspecialchars($row['model_name'] ?? 'N/A') ?>
                                             </div>
                                         </td>
+
+                                        <!-- STATUS & LOCATION SECTION SHOWING BOTH MODEL AND ASSET STATUS -->
                                         <td>
                                             <?php
-                                            $badge_class = 'bg-secondary';
-                                            if (($row['status_name'] ?? '') == 'Assigned') $badge_class = 'bg-primary';
-                                            elseif (in_array(($row['status_name'] ?? ''), ['Available', 'Working'])) $badge_class = 'bg-success';
-                                            elseif (($row['status_name'] ?? '') == 'Under Repair') $badge_class = 'bg-warning text-dark';
-                                            elseif (in_array(($row['status_name'] ?? ''), ['Retired', 'Condemned'])) $badge_class = 'bg-danger';
+                                            // 1. Asset Status (e.g. Assigned, Available)
+                                            $asset_status = $row['status_name'] ?? 'N/A';
+                                            $asset_badge = 'bg-secondary';
+                                            $asset_icon = '';
+
+                                            if ($asset_status == 'Assigned') {
+                                                $asset_badge = 'bg-primary';
+                                                $asset_icon = '<i class="bi bi-person-check-fill me-1"></i>';
+                                            } elseif ($asset_status == 'Available') {
+                                                $asset_badge = 'bg-success';
+                                                $asset_icon = '<i class="bi bi-check-circle-fill me-1"></i>';
+                                            } elseif ($asset_status == 'Under Repair') {
+                                                $asset_badge = 'bg-warning text-dark';
+                                                $asset_icon = '<i class="bi bi-tools me-1"></i>';
+                                            }
+
+                                            // 2. Model Status (e.g. Working, Provisional Survey Off, Final Survey Off)
+                                            $model_status = $row['model_status_name'] ?? '';
+                                            $model_badge = '';
+                                            $model_icon = '';
+
+                                            if ($model_status == 'Working') {
+                                                $model_badge = 'bg-success bg-opacity-75 text-white border border-success';
+                                                $model_icon = '<i class="bi bi-activity me-1"></i>';
+                                            } elseif ($model_status == 'Provisional Survey Off') {
+                                                $model_badge = 'bg-info text-dark border border-info';
+                                                $model_icon = '<i class="bi bi-clipboard-minus-fill me-1"></i>';
+                                            } elseif ($model_status == 'Final Survey Off') {
+                                                $model_badge = 'bg-dark text-white';
+                                                $model_icon = '<i class="bi bi-clipboard-x-fill me-1"></i>';
+                                            }
                                             ?>
-                                            <span class="badge <?= $badge_class ?> rounded-pill mb-1 d-inline-block">
-                                                <?= htmlspecialchars($row['status_name'] ?? 'N/A') ?>
+
+                                            <!-- Render Asset Status Badge -->
+                                            <span class="badge <?= $asset_badge ?> rounded-pill mb-1 d-inline-block px-3 py-2 shadow-sm">
+                                                <?= $asset_icon . htmlspecialchars($asset_status) ?>
                                             </span>
-                                            <div class="small text-dark fw-semibold">
+
+                                            <!-- Render Model Status Badge (if it exists) -->
+                                            <?php if (!empty($model_status)): ?>
+                                                <span class="badge <?= $model_badge ?> rounded-pill mb-1 d-inline-block px-3 py-2 shadow-sm ms-1" title="Model Lifecycle Status">
+                                                    <?= $model_icon . htmlspecialchars($model_status) ?>
+                                                </span>
+                                            <?php endif; ?>
+
+                                            <div class="small text-dark fw-semibold mt-1">
                                                 <i class="bi bi-geo-alt text-danger"></i>
                                                 <?= htmlspecialchars($row['dept_name'] ?? 'N/A') ?>
                                                 <?= !empty($row['floor']) ? " <span class='text-muted'>({$row['floor']})</span>" : "" ?>
                                             </div>
                                         </td>
+
                                         <td>
                                             <?php if (!empty($row['assigned_user_name'])): ?>
                                                 <div class="fw-bold text-dark"><i class="bi bi-person text-muted me-1"></i><?= htmlspecialchars($row['assigned_user_name']) ?></div>
@@ -826,21 +742,8 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                                                 <span class="text-muted small"><i class="bi bi-dash-circle me-1"></i>Not Assigned</span>
                                             <?php endif; ?>
 
-                                            <div class="small text-muted mt-1 d-flex align-items-center">
-                                                <span title="Purchase Date"><i class="bi bi-calendar3 me-1"></i><?= !empty($row['purchase_date']) ? date('d M Y', strtotime($row['purchase_date'])) : '-' ?></span>
-
-                                                <?php
-                                                if (!empty($row['warranty_expiry'])) {
-                                                    $exp_time = strtotime($row['warranty_expiry']);
-                                                    $days_left = floor(($exp_time - time()) / (60 * 60 * 24));
-
-                                                    if ($days_left < 0) {
-                                                        echo "<span class='badge bg-danger bg-opacity-10 text-danger border border-danger ms-2' title='Warranty Expired'><i class='bi bi-shield-x'></i> Expired</span>";
-                                                    } elseif ($days_left <= 30) {
-                                                        echo "<span class='badge bg-warning bg-opacity-10 text-warning border border-warning ms-2' title='Expires in {$days_left} days'><i class='bi bi-shield-exclamation'></i> Exp. Soon</span>";
-                                                    }
-                                                }
-                                                ?>
+                                            <div class="small text-muted mt-1">
+                                                <span><i class="bi bi-calendar3 me-1"></i><?= !empty($row['purchase_date']) ? date('d M Y', strtotime($row['purchase_date'])) : '-' ?></span>
                                             </div>
                                         </td>
                                         <td class="text-center">
@@ -867,9 +770,7 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                             <?php else: ?>
                                 <tr>
                                     <td colspan="8" class="text-center py-5 text-muted">
-                                        <i class="bi bi-inboxes fs-1 d-block mb-3 opacity-50"></i>
                                         <h5>No assets found.</h5>
-                                        <p class="mb-0">Try adjusting your filters or add a new asset.</p>
                                     </td>
                                 </tr>
                             <?php endif; ?>
@@ -878,171 +779,8 @@ $exportPdfUrl = '?' . http_build_query($exportParams);
                 </div>
             </form>
         </div>
-
-        <!-- PAGINATION -->
-        <?php if ($totalPages > 0): ?>
-            <div class="card-footer bg-white border-0 py-3">
-                <div class="d-flex flex-column flex-md-row justify-content-between align-items-center">
-                    <div class="text-muted small mb-2 mb-md-0">
-                        Showing <span class="fw-bold text-dark"><?= $offset + 1 ?></span> to <span class="fw-bold text-dark"><?= min($offset + $limit, $totalRows) ?></span> of <span class="fw-bold text-dark"><?= $totalRows ?></span> entries
-                    </div>
-                    <?php if ($totalPages > 1): ?>
-                        <nav aria-label="Page navigation">
-                            <ul class="pagination pagination-sm mb-0 shadow-sm">
-                                <li class="page-item <?= ($page <= 1) ? 'disabled' : '' ?>">
-                                    <a class="page-link text-dark" href="?page=<?= $page - 1 ?>&search=<?= urlencode($search) ?>&category=<?= urlencode($category) ?>&status=<?= urlencode($status) ?>&location=<?= urlencode($location) ?>&model=<?= urlencode($model) ?>">Previous</a>
-                                </li>
-                                <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                                    <li class="page-item <?= ($page == $i) ? 'active' : '' ?>">
-                                        <a class="page-link <?= ($page == $i) ? 'bg-primary border-primary' : 'text-dark' ?>"
-                                            href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&category=<?= urlencode($category) ?>&status=<?= urlencode($status) ?>&location=<?= urlencode($location) ?>&model=<?= urlencode($model) ?>">
-                                            <?= $i ?>
-                                        </a>
-                                    </li>
-                                <?php endfor; ?>
-                                <li class="page-item <?= ($page >= $totalPages) ? 'disabled' : '' ?>">
-                                    <a class="page-link text-dark" href="?page=<?= $page + 1 ?>&search=<?= urlencode($search) ?>&category=<?= urlencode($category) ?>&status=<?= urlencode($status) ?>&location=<?= urlencode($location) ?>&model=<?= urlencode($model) ?>">Next</a>
-                                </li>
-                            </ul>
-                        </nav>
-                    <?php endif; ?>
-                </div>
-            </div>
-        <?php endif; ?>
     </div>
 </div>
-
-<script>
-    // Native JS for Modals
-    function openLabelModal() {
-        document.getElementById('printLabelsModal').style.display = 'block';
-    }
-
-    function closeLabelModal() {
-        document.getElementById('printLabelsModal').style.display = 'none';
-    }
-
-    function submitLabelForm() {
-        document.getElementById('bulkLabelForm').submit();
-        closeLabelModal();
-    }
-
-    function copyToClipboard(text) {
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(text).then(() => alert('Copied: ' + text));
-        } else {
-            let t = document.createElement("textarea");
-            t.value = text;
-            t.style.position = "fixed";
-            t.style.left = "-9999px";
-            document.body.appendChild(t);
-            t.focus();
-            t.select();
-            document.execCommand('copy');
-            t.remove();
-            alert('Copied: ' + text);
-        }
-    }
-
-    document.addEventListener("DOMContentLoaded", function() {
-        // 1. Export Dropdown Handling
-        const exportBtn = document.getElementById("btnExportDropdown");
-        const exportMenu = document.getElementById("exportDropdownMenu");
-
-        if (exportBtn && exportMenu) {
-            exportBtn.addEventListener("click", function(e) {
-                e.stopPropagation();
-                exportMenu.style.display = (exportMenu.style.display === "block") ? "none" : "block";
-            });
-
-            document.addEventListener("click", function(e) {
-                if (!exportBtn.contains(e.target) && !exportMenu.contains(e.target)) {
-                    exportMenu.style.display = "none";
-                }
-            });
-        }
-
-        // 2. Select All and Print Labels Button Logic
-        const selectAll = document.getElementById("selectAll");
-        const checkboxes = document.querySelectorAll(".asset-checkbox");
-        const btnOpenModal = document.getElementById("btnOpenLabelModal");
-        const selectAllBanner = document.getElementById("selectAllBanner");
-        const selectAllText = document.getElementById("selectAllText");
-        const selectAllPagesBtn = document.getElementById("selectAllPagesBtn");
-        const selectAllPagesInput = document.getElementById("selectAllPagesInput");
-
-        let totalRows = <?= $totalRows ?>;
-        let limit = <?= $limit ?>;
-        let allPagesSelected = false;
-
-        btnOpenModal.addEventListener("click", function(e) {
-            const checkedCount = document.querySelectorAll(".asset-checkbox:checked").length;
-            if (checkedCount === 0 && !allPagesSelected) {
-                e.preventDefault();
-                alert("Please check the box next to at least one asset to print labels!");
-            } else {
-                openLabelModal();
-            }
-        });
-
-        if (selectAll) {
-            selectAll.addEventListener("change", function() {
-                checkboxes.forEach(cb => cb.checked = this.checked);
-                if (this.checked && totalRows > limit) {
-                    selectAllBanner.style.display = "table-row";
-                    allPagesSelected = false;
-                    selectAllPagesInput.value = "0";
-                    selectAllText.innerHTML = `All ${checkboxes.length} assets on this page are selected.`;
-                    selectAllPagesBtn.innerHTML = `Select all ${totalRows} assets matching filters.`;
-                    selectAllPagesBtn.classList.replace("text-danger", "text-primary");
-                } else {
-                    if (selectAllBanner) selectAllBanner.style.display = "none";
-                    allPagesSelected = false;
-                    selectAllPagesInput.value = "0";
-                }
-            });
-        }
-
-        checkboxes.forEach(cb => {
-            cb.addEventListener("change", function() {
-                if (!this.checked) {
-                    selectAll.checked = false;
-                    if (selectAllBanner) selectAllBanner.style.display = "none";
-                    allPagesSelected = false;
-                    selectAllPagesInput.value = "0";
-                }
-                if (document.querySelectorAll(".asset-checkbox:checked").length === checkboxes.length && checkboxes.length > 0) {
-                    selectAll.checked = true;
-                    if (totalRows > limit) {
-                        selectAllBanner.style.display = "table-row";
-                        selectAllText.innerHTML = `All ${checkboxes.length} assets on this page are selected.`;
-                        selectAllPagesBtn.innerHTML = `Select all ${totalRows} assets matching filters.`;
-                        selectAllPagesBtn.classList.replace("text-danger", "text-primary");
-                    }
-                }
-            });
-        });
-
-        if (selectAllPagesBtn) {
-            selectAllPagesBtn.addEventListener("click", function() {
-                if (!allPagesSelected) {
-                    allPagesSelected = true;
-                    selectAllPagesInput.value = "1";
-                    selectAllText.innerHTML = `<strong>All ${totalRows} assets are selected.</strong>`;
-                    this.innerHTML = "Clear selection";
-                    this.classList.replace("text-primary", "text-danger");
-                } else {
-                    selectAll.checked = false;
-                    checkboxes.forEach(cb => cb.checked = false);
-                    selectAllBanner.style.display = "none";
-                    allPagesSelected = false;
-                    selectAllPagesInput.value = "0";
-                    this.classList.replace("text-danger", "text-primary");
-                }
-            });
-        }
-    });
-</script>
 
 <?php
 if (ob_get_length()) ob_end_flush();

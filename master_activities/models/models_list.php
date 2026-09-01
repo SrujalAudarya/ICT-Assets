@@ -11,16 +11,18 @@ $search = trim($_GET['search'] ?? '');
 $filter_category = $_GET['category_id'] ?? '';
 $filter_vendor = $_GET['vendor_id'] ?? '';
 
-// Base query joining categories (parent and sub) and vendors
+// Base query joining categories (parent and sub), vendors, and lifecycle status
 $query = "SELECT m.*, 
           c.category_name, 
           pc.category_name AS parent_category_name,
           v.vendor_name,
+          s.status_name,
           COUNT(a.asset_id) AS total_assets
           FROM asset_models m
           LEFT JOIN asset_categories c ON m.category_id = c.category_id
           LEFT JOIN asset_categories pc ON c.parent_id = pc.category_id
           LEFT JOIN vendors v ON m.vendor_id = v.vendor_id
+          LEFT JOIN asset_status s ON m.status_id = s.status_id
           LEFT JOIN assets a ON m.model_id = a.model_id";
 
 // Dynamic WHERE clause building
@@ -119,6 +121,7 @@ $result = mysqli_query($conn, $query);
                             <th>ID</th>
                             <th>Logo</th>
                             <th>Model Name</th>
+                            <th>Status</th>
                             <th>Category</th>
                             <th>Make</th>
                             <th>Pur. Date</th>
@@ -152,6 +155,29 @@ $result = mysqli_query($conn, $query);
                                     <a href="models_details.php?id=<?= $row['model_id'] ?>" class="text-decoration-none">
                                         <?= htmlspecialchars($row['model_name']) ?>
                                     </a>
+                                </td>
+
+                                <!-- Lifecycle Status Tag -->
+                                <td>
+                                    <?php
+                                    $status_n = $row['status_name'] ?? 'Working';
+                                    $badge_class = 'bg-secondary';
+                                    $status_icon = '';
+
+                                    if ($status_n == 'Working') { 
+                                        $badge_class = 'bg-success border border-success bg-opacity-75 text-white'; 
+                                        $status_icon = '<i class="bi bi-activity me-1"></i>'; 
+                                    } elseif ($status_n == 'Provisional Survey Off') { 
+                                        $badge_class = 'bg-info text-dark shadow-sm border border-info'; 
+                                        $status_icon = '<i class="bi bi-clipboard-minus-fill me-1"></i>'; 
+                                    } elseif ($status_n == 'Final Survey Off') { 
+                                        $badge_class = 'bg-dark text-white shadow-sm'; 
+                                        $status_icon = '<i class="bi bi-clipboard-x-fill me-1"></i>'; 
+                                    }
+                                    ?>
+                                    <span class="badge <?= $badge_class ?> rounded-pill px-3 py-2 shadow-sm">
+                                        <?= $status_icon . htmlspecialchars($status_n) ?>
+                                    </span>
                                 </td>
 
                                 <!-- Category Format (Parent » Sub) -->
@@ -218,7 +244,7 @@ $result = mysqli_query($conn, $query);
                             </tr>
                         <?php endwhile; ?>
                     <?php else: ?>
-                        <tr><td colspan="11" class="text-center py-4 text-muted">No asset models found matching your criteria.</td></tr>
+                        <tr><td colspan="12" class="text-center py-4 text-muted">No asset models found matching your criteria.</td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>

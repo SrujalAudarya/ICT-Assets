@@ -12,9 +12,6 @@ if (isset($_GET['action']) && $_GET['action'] == 'get_subcategories') {
     header('Content-Type: application/json');
     $parent_id = (int)$_GET['parent_id'];
     
-    // Assuming you have a parent_id or similar structure in your asset_categories table.
-    // If your table is just a flat list of categories, you'll need to update this query
-    // to match how you define the relationship between "PC" and "Desktop/Laptop".
     $query = "SELECT category_id, category_name FROM asset_categories WHERE parent_id = $parent_id ORDER BY category_name ASC";
     $res = mysqli_query($conn, $query);
     
@@ -33,7 +30,6 @@ if (isset($_GET['action']) && $_GET['action'] == 'get_subcategories') {
    ========================================================= */
 if (isset($_POST['save'])) {
     $name = mysqli_real_escape_string($conn, trim($_POST['model_name']));
-    // Save the final, most specific category (the subcategory) to the model
     $category_id = mysqli_real_escape_string($conn, $_POST['sub_category_id']); 
     
     $vendor_id = mysqli_real_escape_string($conn, $_POST['vendor_id']);
@@ -41,13 +37,15 @@ if (isset($_POST['save'])) {
     $contract_no = mysqli_real_escape_string($conn, trim($_POST['contract_no']));
     $quantity = !empty($_POST['quantity']) ? (int)$_POST['quantity'] : 0;
     
+    // --- CAPTURE STATUS ID FOR LIFECYCLE ---
+    $status_id = !empty($_POST['status_id']) ? (int)$_POST['status_id'] : "NULL";
+
     $purchase_date = !empty($_POST['purchase_date']) ? mysqli_real_escape_string($conn, $_POST['purchase_date']) : NULL;
     $expiry_date   = !empty($_POST['expiry_date']) ? mysqli_real_escape_string($conn, $_POST['expiry_date']) : NULL;
     
     $financial_year = mysqli_real_escape_string($conn, trim($_POST['financial_year']));
     $specifications = mysqli_real_escape_string($conn, trim($_POST['specifications']));
 
-    // --- ADDED COST CAPTURE HERE ---
     $cost = !empty($_POST['cost']) ? trim($_POST['cost']) : "0";
     $cost_sql = is_numeric($cost) ? $cost : "0";
 
@@ -90,11 +88,11 @@ if (isset($_POST['save'])) {
         if (empty($category_id)) {
             $error = "Please select both a Main Category and a Sub Category.";
         } else {
-            // --- ADDED COST TO THE INSERT QUERY HERE ---
+            // --- ADDED status_id TO THE INSERT QUERY ---
             $query = "INSERT INTO asset_models 
-                        (model_name, category_id, vendor_id, make_name, contract_no, quantity, purchase_date, expiry_date, financial_year, specifications, model_image, supply_order_doc, cost) 
+                        (model_name, category_id, vendor_id, make_name, contract_no, quantity, purchase_date, expiry_date, financial_year, specifications, model_image, supply_order_doc, cost, status_id) 
                       VALUES 
-                        ('$name', '$category_id', '$vendor_id', '$make_name', '$contract_no', '$quantity', $purchase_date_sql, $expiry_date_sql, '$financial_year', '$specifications', $image_path_db, $supply_order_db, $cost_sql)";
+                        ('$name', '$category_id', '$vendor_id', '$make_name', '$contract_no', '$quantity', $purchase_date_sql, $expiry_date_sql, '$financial_year', '$specifications', $image_path_db, $supply_order_db, $cost_sql, $status_id)";
             
             if(mysqli_query($conn, $query)) {
                 header("Location: " . ROUTE_MODELS);
@@ -125,20 +123,31 @@ include("../../includes/sidebar.php");
                 <h5 class="text-primary border-bottom pb-2 mb-3">Model Details</h5>
                 
                 <div class="row">
-                    <div class="col-md-12 mb-3">
+                    <div class="col-md-8 mb-3">
                         <label class="form-label">Model Name <span class="text-danger">*</span></label>
                         <input type="text" name="model_name" class="form-control" required>
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Lifecycle Status <span class="text-danger">*</span></label>
+                        <select name="status_id" class="form-select fw-semibold" required>
+                            <option value="">-- Select Status --</option>
+                            <?php
+                            $status_query = mysqli_query($conn, "SELECT status_id, status_name FROM asset_status WHERE status_name IN ('Working', 'Provisional Survey Off', 'Final Survey Off') ORDER BY status_name ASC");
+                            while($st = mysqli_fetch_assoc($status_query)) {
+                                echo "<option value='{$st['status_id']}'>" . htmlspecialchars($st['status_name']) . "</option>";
+                            }
+                            ?>
+                        </select>
                     </div>
                 </div>
 
                 <div class="row">
-                    <!-- MAIN CATEGORY -->
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Main Asset Type <span class="text-danger">*</span></label>
                         <select name="main_category_id" id="main_category_id" class="form-select" required>
                             <option value="">-- Select Main Category --</option>
                             <?php
-                            // Fetch parent categories (assuming parent_id IS NULL or 0 denotes a main category)
                             $res = mysqli_query($conn, "SELECT * FROM asset_categories WHERE parent_id IS NULL OR parent_id = 0 ORDER BY category_name ASC");
                             while($row = mysqli_fetch_assoc($res)) {
                                 echo "<option value='{$row['category_id']}'>{$row['category_name']}</option>";
@@ -147,7 +156,6 @@ include("../../includes/sidebar.php");
                         </select>
                     </div>
 
-                    <!-- SUB CATEGORY -->
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Sub Category <span class="text-danger">*</span></label>
                         <select name="sub_category_id" id="sub_category_id" class="form-select" required disabled>
@@ -207,7 +215,6 @@ include("../../includes/sidebar.php");
                         <input type="text" name="financial_year" class="form-control" placeholder="e.g. 2025-26">
                     </div>
 
-                    <!-- --- ADDED COST FIELD HERE --- -->
                     <div class="col-md-3 mb-3">
                         <label class="form-label">Unit Cost (₹)</label>
                         <input type="number" step="0.01" min="0" name="cost" class="form-control" placeholder="0.00">
@@ -247,7 +254,6 @@ document.addEventListener("DOMContentLoaded", function () {
     mainCategorySelect.addEventListener("change", function () {
         const parentId = this.value;
 
-        // Reset Sub Category Dropdown
         subCategorySelect.innerHTML = '<option value="">-- Select Sub Category --</option>';
         
         if (parentId === "") {
@@ -257,7 +263,6 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
 
-        // Fetch Subcategories via AJAX
         fetch(window.location.pathname + `?action=get_subcategories&parent_id=${parentId}`)
             .then(response => response.json())
             .then(data => {

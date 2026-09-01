@@ -8,17 +8,19 @@ include("../../config/db.php");
 $id = isset($_GET['id']) ? mysqli_real_escape_string($conn, $_GET['id']) : '0';
 
 /* ---------- MODEL BASIC INFO ---------- */
-// Joined asset_categories a second time to fetch the Parent Category Name
+// UPDATED: Joined asset_status to fetch the model's lifecycle status name
 $model_query = "
     SELECT m.*, 
            c.category_name, 
            c.parent_id,
            pc.category_name AS parent_category_name,
-           v.vendor_name
+           v.vendor_name,
+           s.status_name AS model_status_name
     FROM asset_models m
     LEFT JOIN asset_categories c ON m.category_id = c.category_id
     LEFT JOIN asset_categories pc ON c.parent_id = pc.category_id
     LEFT JOIN vendors v ON m.vendor_id = v.vendor_id
+    LEFT JOIN asset_status s ON m.status_id = s.status_id
     WHERE m.model_id = '$id'
 ";
 $model = mysqli_fetch_assoc(mysqli_query($conn, $model_query));
@@ -187,6 +189,33 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
 
                     <table class="table table-sm table-borderless">
                         <tr><th width="40%" class="text-muted">Model Name</th><td class="fw-bold"><?= htmlspecialchars($model['model_name']) ?></td></tr>
+                        
+                        <!-- MODEL STATUS DISPLAY -->
+                        <tr>
+                            <th class="text-muted align-middle">Model Status</th>
+                            <td>
+                                <?php
+                                $m_status = $model['model_status_name'] ?? 'Working';
+                                $m_badge = 'bg-secondary';
+                                $m_icon = '';
+
+                                if ($m_status == 'Working') {
+                                    $m_badge = 'bg-success bg-opacity-75 text-white border border-success';
+                                    $m_icon = '<i class="bi bi-activity me-1"></i>';
+                                } elseif ($m_status == 'Provisional Survey Off') {
+                                    $m_badge = 'bg-info text-dark border border-info';
+                                    $m_icon = '<i class="bi bi-clipboard-minus-fill me-1"></i>';
+                                } elseif ($m_status == 'Final Survey Off') {
+                                    $m_badge = 'bg-dark text-white';
+                                    $m_icon = '<i class="bi bi-clipboard-x-fill me-1"></i>';
+                                }
+                                ?>
+                                <span class="badge <?= $m_badge ?> rounded-pill px-3 py-2 shadow-sm">
+                                    <?= $m_icon . htmlspecialchars($m_status) ?>
+                                </span>
+                            </td>
+                        </tr>
+
                         <tr><th class="text-muted">Make</th><td><?= htmlspecialchars($model['make_name'] ?: 'N/A') ?></td></tr>
                         
                         <!-- DYNAMIC CATEGORY DISPLAY (Shows Parent » Child) -->
