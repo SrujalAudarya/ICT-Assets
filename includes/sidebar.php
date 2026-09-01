@@ -71,6 +71,13 @@ $is_details_open = in_array($current_page, $asset_details_pages) || !empty($cate
         <a href="<?= ROUTE_STATUS ?>" class="nav-link <?= isActive(['status_list.php', 'status_add.php', 'status_edit.php', 'status_details.php']) ?>">
             <i class="bi bi-activity"></i> Status Definitions
         </a>
+
+        <div class="master-menu-header">System</div>
+
+        <!-- ADDED TRASH BIN OPTION -->
+        <a href="trash_bin.php" class="nav-link <?= isActive(['trash_bin.php']) ?>">
+            <i class="bi bi-trash3 text-danger"></i> Trash Bin
+        </a>
     </div>
 </div>
 

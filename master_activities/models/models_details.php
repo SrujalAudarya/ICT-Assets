@@ -1,14 +1,36 @@
 <?php
-ob_start(); // CRITICAL: Protects the Excel/CSV Export Headers from failing
+ob_start();
 global $conn;
 include("../../includes/auth.php");
 include("../../config/db.php");
 
-// Safely capture the ID
 $id = isset($_GET['id']) ? mysqli_real_escape_string($conn, $_GET['id']) : '0';
 
+/* =========================================================
+   HANDLE BULK STATE UPDATE (In Use / Not In Use)
+========================================================= */
+if (isset($_POST['bulk_action']) && !empty($_POST['selected_assets'])) {
+    $action_state = mysqli_real_escape_string($conn, $_POST['bulk_action']);
+    $asset_ids = array_map('intval', $_POST['selected_assets']);
+    $ids_string = implode(',', $asset_ids);
+
+    // Look up state ID in asset_status, or create it automatically if missing
+    $st_q = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name = '$action_state' LIMIT 1");
+    if ($st_q && mysqli_num_rows($st_q) > 0) {
+        $target_status_id = mysqli_fetch_assoc($st_q)['status_id'];
+    } else {
+        mysqli_query($conn, "INSERT INTO asset_status (status_name) VALUES ('$action_state')");
+        $target_status_id = mysqli_insert_id($conn);
+    }
+
+    if ($target_status_id) {
+        mysqli_query($conn, "UPDATE assets SET status_id = '$target_status_id' WHERE asset_id IN ($ids_string) AND model_id = '$id'");
+        header("Location: models_details.php?id=" . $id . "&msg=status_updated");
+        exit();
+    }
+}
+
 /* ---------- MODEL BASIC INFO ---------- */
-// UPDATED: Joined asset_status to fetch the model's lifecycle status name
 $model_query = "
     SELECT m.*, 
            c.category_name, 
@@ -32,6 +54,10 @@ if (!$model) {
     exit();
 }
 
+// Check if this specific model's state is Survey Off (Provisional or Final)
+$model_status_check = $model['model_status_name'] ?? '';
+$is_survey_off_model = (strpos($model_status_check, 'Survey Off') !== false);
+
 /* ---------- FILTER HANDLING ---------- */
 $status = $_GET['status'] ?? '';
 $location = $_GET['location'] ?? '';
@@ -54,13 +80,15 @@ SELECT
     a.*, 
     u.name AS user_name, 
     c.category_name, 
-    s.status_name, 
+    s.status_name AS asset_status_name, 
+    ms.status_name AS model_status_name,
     l.dept_name
 FROM assets a
 LEFT JOIN asset_categories c ON a.category_id = c.category_id
 LEFT JOIN asset_status s ON a.status_id = s.status_id
+LEFT JOIN asset_models m ON a.model_id = m.model_id
+LEFT JOIN asset_status ms ON m.status_id = ms.status_id
 LEFT JOIN locations l ON a.location_id = l.location_id
-/* ONLY CURRENT ASSIGNMENT */
 LEFT JOIN asset_assignments asn ON a.asset_id = asn.asset_id AND asn.returned_date IS NULL
 LEFT JOIN users u ON asn.user_id = u.user_id
 $where
@@ -69,11 +97,9 @@ ORDER BY a.asset_id DESC
 ";
 
 /* =========================================================
-   EXPORT LOGIC (EXCEL & CSV) - CORRECTED
+   EXPORT LOGIC (EXCEL & CSV)
    ========================================================= */
 if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel'])) {
-    
-    // Aggressively clear output buffer to prevent corrupted files
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
@@ -94,7 +120,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel'])) {
     }
 
     $output = fopen('php://output', 'w');
-    fputcsv($output, ['Sr No', 'Asset Name', 'Serial No', 'Category', 'Status', 'Location', 'Assigned To'], $delimiter);
+    fputcsv($output, ['Sr No', 'Asset Name', 'Serial No', 'Category', 'Status', 'State', 'Location', 'Assigned To'], $delimiter);
 
     $sr = 1;
     while ($r = mysqli_fetch_assoc($export_res)) {
@@ -103,7 +129,8 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel'])) {
             $r['asset_name'],
             $r['serial_number'],
             $r['category_name'] ?? 'N/A',
-            $r['status_name'] ?? 'N/A',
+            $r['asset_status_name'] ?? 'N/A',
+            $r['model_status_name'] ?? 'N/A',
             $r['dept_name'] ?? 'N/A',
             $r['user_name'] ?? 'Not Assigned'
         ], $delimiter);
@@ -118,20 +145,15 @@ include("../../includes/sidebar.php");
 $assets_result = mysqli_query($conn, $assets_query);
 $filtered_count = mysqli_num_rows($assets_result);
 
-// Total count for the model (unfiltered)
 $total_query = mysqli_query($conn, "SELECT COUNT(*) as total FROM assets WHERE model_id = '$id'");
 $total_assets = mysqli_fetch_assoc($total_query)['total'];
 
-// Generate Export URLs keeping filters intact
 $exportParams = $_GET;
 $exportParams['export'] = 'excel';
 $exportExcelUrl = '?' . http_build_query($exportParams);
 $exportParams['export'] = 'csv';
 $exportCsvUrl = '?' . http_build_query($exportParams);
 
-// =========================================================
-// SMART "ADD ASSET" LINK GENERATOR
-// =========================================================
 $main_cat_param = !empty($model['parent_id']) ? $model['parent_id'] : $model['category_id'];
 $sub_cat_param  = !empty($model['parent_id']) ? $model['category_id'] : '';
 $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$main_cat_param}&sub_category_id={$sub_cat_param}";
@@ -144,13 +166,10 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
             <div class="text-muted mt-1 small">Detailed Profile & Linked Assets</div>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            
-            <!-- NEW SMART ADD ASSET BUTTON -->
             <a href="<?= $add_asset_link ?>" class="btn btn-primary fw-bold shadow-sm">
                 <i class="bi bi-plus-circle me-1"></i> Add Asset
             </a>
 
-            <!-- EXPORT DROPDOWN WITH FIXED HOVER STYLING & NATIVE JS -->
             <div class="dropdown position-relative d-inline-block">
                 <button class="btn btn-light bg-white border border-secondary text-dark dropdown-toggle fw-bold shadow-sm" type="button" id="btnExportDropdown">
                     <i class="bi bi-download me-1"></i> Export
@@ -167,6 +186,13 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
         </div>
     </div>
 
+    <!-- NOTIFICATION ALERT -->
+    <?php if (isset($_GET['msg']) && $_GET['msg'] == 'status_updated'): ?>
+        <div class="alert alert-success shadow-sm border-0 d-flex align-items-center mb-4">
+            <i class="bi bi-check-circle-fill me-2 fs-5"></i> Selected assets state updated successfully.
+        </div>
+    <?php endif; ?>
+
     <div class="row">
         <!-- LEFT COLUMN: MODEL INFO & IMAGE -->
         <div class="col-md-4">
@@ -175,10 +201,9 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
                     <h5 class="mb-0 text-primary fw-bold"><i class="bi bi-info-circle-fill me-1"></i> Model Information</h5>
                 </div>
                 <div class="card-body">
-                    <!-- MODEL LOGO / IMAGE DISPLAY -->
                     <div class="text-center mb-4 p-3 bg-light border rounded shadow-sm">
                         <?php if (!empty($model['model_image'])): ?>
-                            <img src="../../<?= htmlspecialchars($model['model_image']) ?>" class="img-fluid rounded" style="max-height: 150px; object-fit: contain;" alt="Model Image/Logo">
+                            <img src="../../<?= htmlspecialchars($model['model_image']) ?>" class="img-fluid rounded" style="max-height: 150px; object-fit: contain;" alt="Model Image">
                         <?php else: ?>
                             <div class="text-muted py-4">
                                 <i class="bi bi-image fs-1 d-block mb-1"></i>
@@ -189,10 +214,8 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
 
                     <table class="table table-sm table-borderless">
                         <tr><th width="40%" class="text-muted">Model Name</th><td class="fw-bold"><?= htmlspecialchars($model['model_name']) ?></td></tr>
-                        
-                        <!-- MODEL STATUS DISPLAY -->
                         <tr>
-                            <th class="text-muted align-middle">Model Status</th>
+                            <th class="text-muted align-middle">Model State</th>
                             <td>
                                 <?php
                                 $m_status = $model['model_status_name'] ?? 'Working';
@@ -215,10 +238,7 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
                                 </span>
                             </td>
                         </tr>
-
                         <tr><th class="text-muted">Make</th><td><?= htmlspecialchars($model['make_name'] ?: 'N/A') ?></td></tr>
-                        
-                        <!-- DYNAMIC CATEGORY DISPLAY (Shows Parent » Child) -->
                         <tr>
                             <th class="text-muted">Category</th>
                             <td>
@@ -231,17 +251,12 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
                                 ?>
                             </td>
                         </tr>
-
                         <tr><th class="text-muted">Vendor</th><td><?= htmlspecialchars($model['vendor_name'] ?: 'N/A') ?></td></tr>
                         <tr><th class="text-muted">Contract No</th><td><code><?= htmlspecialchars($model['contract_no'] ?: 'N/A') ?></code></td></tr>
-                        
-                        <!-- QUANTITY & COST (WITH AUTOMATIC TOTAL VALUE) -->
                         <tr class="border-top"><th class="text-muted pt-2">Quantity</th><td class="pt-2"><span class="badge bg-secondary"><?= (int)($model['quantity'] ?? 0) ?> Units</span></td></tr>
                         <tr><th class="text-muted">Unit Cost</th><td class="text-success fw-bold">₹ <?= number_format((float)($model['cost'] ?? 0), 2) ?></td></tr>
                         <tr><th class="text-muted">Total Value</th><td class="text-primary fw-bold">₹ <?= number_format(((int)($model['quantity'] ?? 0) * (float)($model['cost'] ?? 0)), 2) ?></td></tr>
-                        
                         <tr><th class="text-muted">F.Y.</th><td><?= htmlspecialchars($model['financial_year'] ?: 'N/A') ?></td></tr>
-                        
                         <tr class="border-top"><th class="text-muted pt-2">Purchase Date</th><td class="pt-2 fw-bold"><?= !empty($model['purchase_date']) ? date('d M Y', strtotime($model['purchase_date'])) : 'N/A' ?></td></tr>
                         <tr>
                             <th class="text-muted">Warranty Expiry</th>
@@ -291,7 +306,6 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
 
         <!-- RIGHT COLUMN: ASSETS LIST & FILTERS -->
         <div class="col-md-8">
-            <!-- FILTER FORM -->
             <div class="card mb-4 shadow-sm border-0 bg-light">
                 <div class="card-body">
                     <form method="GET" class="row g-3">
@@ -348,68 +362,112 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
                     <h5 class="mb-0 fw-bold text-dark">Linked Assets</h5>
                     <span class="badge bg-dark rounded-pill px-3"><?= $filtered_count ?> Results</span>
                 </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <!-- ADDED ID="assetsTable" HERE FOR PDF EXPORT -->
-                        <table class="table table-hover align-middle mb-0" id="assetsTable">
-                            <thead class="table-light text-secondary">
-                                <tr>
-                                    <th class="ps-3 border-bottom-0">Asset Name</th>
-                                    <th class="border-bottom-0">Serial No</th>
-                                    <th class="border-bottom-0">Status</th>
-                                    <th class="border-bottom-0">Location</th>
-                                    <th class="border-bottom-0">Assigned To</th>
-                                    <th class="text-center no-export border-bottom-0">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if($filtered_count > 0): ?>
-                                    <?php while($asset = mysqli_fetch_assoc($assets_result)): ?>
-                                        <tr>
-                                            <td class="ps-3 fw-bold text-dark"><?= htmlspecialchars($asset['asset_name']) ?></td>
-                                            
-                                            <td><code class="bg-primary bg-opacity-10 text-primary px-2 py-1 rounded"><?= htmlspecialchars($asset['serial_number']) ?></code></td>
-                                            
-                                            <td>
-                                                <?php
-                                                $badge_class = 'bg-secondary';
-                                                if (($asset['status_name'] ?? '') == 'Assigned') $badge_class = 'bg-primary';
-                                                elseif (in_array(($asset['status_name'] ?? ''), ['Available', 'Working'])) $badge_class = 'bg-success';
-                                                elseif (($asset['status_name'] ?? '') == 'Under Repair') $badge_class = 'bg-warning text-dark';
-                                                elseif (in_array(($asset['status_name'] ?? ''), ['Retired', 'Condemned'])) $badge_class = 'bg-danger';
-                                                ?>
-                                                <span class="badge <?= $badge_class ?> rounded-pill">
-                                                    <?= htmlspecialchars($asset['status_name'] ?? 'N/A') ?>
-                                                </span>
-                                            </td>
+                
+                <!-- BULK ACTIONS FORM WRAPPER -->
+                <form method="POST">
+                    
+                    <!-- SHOW QUICK STATE UPDATE BUTTONS ONLY FOR SURVEY OFF MODELS -->
+                    <?php if ($is_survey_off_model): ?>
+                        <div class="bg-light p-3 border-bottom d-flex align-items-center gap-2 flex-wrap">
+                            <span class="small fw-bold text-muted text-uppercase me-2">Quick State Update (Survey Off):</span>
+                            <button type="submit" name="bulk_action" value="In Use" class="btn btn-sm btn-success fw-bold shadow-sm" onclick="return confirm('Set selected assets state to In Use?')">
+                                <i class="bi bi-check-circle-fill me-1"></i> Mark Selected as In Use
+                            </button>
+                            <button type="submit" name="bulk_action" value="Not In Use" class="btn btn-sm btn-outline-secondary fw-bold shadow-sm" onclick="return confirm('Set selected assets state to Not In Use?')">
+                                <i class="bi bi-dash-circle me-1"></i> Mark Selected as Not In Use
+                            </button>
+                        </div>
+                    <?php endif; ?>
 
-                                            <td><?= htmlspecialchars($asset['dept_name'] ?? 'N/A') ?></td>
-                                            
-                                            <td>
-                                                <?php if (!empty($asset['user_name'])): ?>
-                                                    <div class="fw-bold text-dark"><i class="bi bi-person text-muted me-1"></i><?= htmlspecialchars($asset['user_name']) ?></div>
-                                                <?php else: ?>
-                                                    <span class="text-muted small">Not Assigned</span>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0" id="assetsTable">
+                                <thead class="table-light text-secondary">
+                                    <tr>
+                                        <!-- SHOW CHECKBOX COLUMN ONLY FOR SURVEY OFF MODELS -->
+                                        <?php if ($is_survey_off_model): ?>
+                                            <th class="ps-3 border-bottom-0" style="width: 40px;">
+                                                <input class="form-check-input shadow-sm" type="checkbox" id="selectAll">
+                                            </th>
+                                        <?php endif; ?>
+                                        <th class="<?= $is_survey_off_model ? '' : 'ps-3' ?> border-bottom-0">Asset Name</th>
+                                        <th class="border-bottom-0">Serial No</th>
+                                        <th class="border-bottom-0">Status</th>
+                                        <th class="border-bottom-0">State</th>
+                                        <th class="border-bottom-0">Location</th>
+                                        <th class="border-bottom-0">Assigned To</th>
+                                        <th class="text-center no-export border-bottom-0">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if($filtered_count > 0): ?>
+                                        <?php while($asset = mysqli_fetch_assoc($assets_result)): ?>
+                                            <tr>
+                                                <?php if ($is_survey_off_model): ?>
+                                                    <td class="ps-3">
+                                                        <input class="form-check-input shadow-sm asset-checkbox" type="checkbox" name="selected_assets[]" value="<?= $asset['asset_id'] ?>">
+                                                    </td>
                                                 <?php endif; ?>
-                                            </td>
+                                                <td class="<?= $is_survey_off_model ? '' : 'ps-3' ?> fw-bold text-dark"><?= htmlspecialchars($asset['asset_name']) ?></td>
+                                                <td><code class="bg-primary bg-opacity-10 text-primary px-2 py-1 rounded"><?= htmlspecialchars($asset['serial_number']) ?></code></td>
+                                                
+                                                <!-- STATUS (Assigned, Available, etc.) -->
+                                                <td>
+                                                    <?php
+                                                    $badge_class = 'bg-secondary';
+                                                    $st_name = $asset['asset_status_name'] ?? '';
+                                                    if ($st_name == 'Assigned') $badge_class = 'bg-primary';
+                                                    elseif ($st_name == 'Available') $badge_class = 'bg-success';
+                                                    elseif ($st_name == 'Under Repair') $badge_class = 'bg-warning text-dark';
+                                                    elseif (in_array($st_name, ['Retired', 'Condemned'])) $badge_class = 'bg-danger';
+                                                    ?>
+                                                    <span class="badge <?= $badge_class ?> rounded-pill">
+                                                        <?= htmlspecialchars($st_name ?: 'N/A') ?>
+                                                    </span>
+                                                </td>
 
-                                            <td class="text-center no-export">
-                                                <a href="../assets/asset_details.php?id=<?= $asset['asset_id'] ?>" class="btn btn-sm btn-outline-primary shadow-sm fw-bold">View</a>
+                                                <!-- STATE (In Use, Not In Use, Working, Survey Off, etc.) -->
+                                                <td>
+                                                    <?php
+                                                    $state_class = 'bg-secondary';
+                                                    $state_name = $asset['asset_status_name'] ?? ''; // or model state if preferred
+                                                    // Let's use status name or model status name depending on what state tracks
+                                                    // Here we cleanly map In Use / Not In Use / Working
+                                                    if ($state_name == 'In Use' || $state_name == 'Working') $state_class = 'bg-success';
+                                                    elseif ($state_name == 'Not In Use') $state_class = 'bg-secondary';
+                                                    elseif (strpos($state_name, 'Survey Off') !== false) $state_class = 'bg-dark';
+                                                    ?>
+                                                    <span class="badge <?= $state_class ?> rounded-pill">
+                                                        <?= htmlspecialchars($state_name ?: 'N/A') ?>
+                                                    </span>
+                                                </td>
+
+                                                <td><?= htmlspecialchars($asset['dept_name'] ?? 'N/A') ?></td>
+                                                <td>
+                                                    <?php if (!empty($asset['user_name'])): ?>
+                                                        <div class="fw-bold text-dark"><i class="bi bi-person text-muted me-1"></i><?= htmlspecialchars($asset['user_name']) ?></div>
+                                                    <?php else: ?>
+                                                        <span class="text-muted small">Not Assigned</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td class="text-center no-export">
+                                                    <a href="../assets/asset_details.php?id=<?= $asset['asset_id'] ?>" class="btn btn-sm btn-outline-primary shadow-sm fw-bold">View</a>
+                                                </td>
+                                            </tr>
+                                        <?php endwhile; ?>
+                                    <?php else: ?>
+                                        <tr>
+                                            <td colspan="<?= $is_survey_off_model ? 8 : 7 ?>" class="text-center py-5 text-muted">
+                                                <i class="bi bi-inboxes fs-2 d-block mb-2 opacity-50"></i>
+                                                <h6 class="mb-0">No assets found matching your criteria.</h6>
                                             </td>
                                         </tr>
-                                    <?php endwhile; ?>
-                                <?php else: ?>
-                                    <tr>
-                                        <td colspan="6" class="text-center py-5 text-muted">
-                                            <i class="bi bi-inboxes fs-2 d-block mb-2 opacity-50"></i>
-                                            <h6 class="mb-0">No assets found matching your criteria.</h6>
-                                        </td>
-                                    </tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
+                </form>
             </div>
         </div>
     </div>
@@ -418,6 +476,33 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const selectAll = document.getElementById("selectAll");
+        const checkboxes = document.querySelectorAll(".asset-checkbox");
+
+        if (selectAll) {
+            selectAll.addEventListener("change", function() {
+                checkboxes.forEach(cb => cb.checked = this.checked);
+            });
+        }
+
+        const exportBtn = document.getElementById("btnExportDropdown");
+        const exportMenu = document.getElementById("exportDropdownMenu");
+
+        if (exportBtn && exportMenu) {
+            exportBtn.addEventListener("click", function(e) {
+                e.stopPropagation();
+                exportMenu.style.display = (exportMenu.style.display === "block") ? "none" : "block";
+            });
+
+            document.addEventListener("click", function(e) {
+                if (!exportBtn.contains(e.target) && !exportMenu.contains(e.target)) {
+                    exportMenu.style.display = "none";
+                }
+            });
+        }
+    });
+
     function exportToPDF() {
         if (typeof window.jspdf === 'undefined') {
             alert("PDF library is still loading. Please wait a moment.");
@@ -447,24 +532,6 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
         const safeFilename = "<?= addslashes($model['model_name']) ?>".replace(/[^a-zA-Z0-9_-]/g, "_");
         doc.save("Model_Assets_" + safeFilename + "_<?= date('Y-m-d') ?>.pdf");
     }
-
-    document.addEventListener("DOMContentLoaded", function() {
-        const exportBtn = document.getElementById("btnExportDropdown");
-        const exportMenu = document.getElementById("exportDropdownMenu");
-
-        if (exportBtn && exportMenu) {
-            exportBtn.addEventListener("click", function(e) {
-                e.stopPropagation();
-                exportMenu.style.display = (exportMenu.style.display === "block") ? "none" : "block";
-            });
-
-            document.addEventListener("click", function(e) {
-                if (!exportBtn.contains(e.target) && !exportMenu.contains(e.target)) {
-                    exportMenu.style.display = "none";
-                }
-            });
-        }
-    });
 </script>
 
 <?php 
