@@ -14,17 +14,25 @@ if (isset($_POST['bulk_action']) && !empty($_POST['selected_assets'])) {
     $asset_ids = array_map('intval', $_POST['selected_assets']);
     $ids_string = implode(',', $asset_ids);
 
-    // If marked as 'Not In Use', automatically unassign from user!
+    // If marked as 'Not In Use', automatically unassign from user and set status to Available
     if ($action_state === 'Not In Use') {
+        // 1. Close active assignments
         mysqli_query($conn, "
             UPDATE asset_assignments 
             SET returned_date = CURDATE() 
             WHERE returned_date IS NULL 
               AND asset_id IN ($ids_string)
         ");
+
+        // 2. Change operational status to 'Available' so it clears out of assigned tracking
+        $avail_q = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name = 'Available' LIMIT 1");
+        if ($avail_q && mysqli_num_rows($avail_q) > 0) {
+            $avail_status_id = mysqli_fetch_assoc($avail_q)['status_id'];
+            mysqli_query($conn, "UPDATE assets SET status_id = '$avail_status_id' WHERE asset_id IN ($ids_string)");
+        }
     }
 
-    // Updates ONLY the asset_state column, leaving status_id (Assigned/Available) completely untouched!
+    // Updates ONLY the asset_state column, leaving general structure intact
     $update_state_q = "UPDATE assets SET asset_state = '$action_state' WHERE asset_id IN ($ids_string) AND model_id = '$id'";
     @mysqli_query($conn, $update_state_q);
 

@@ -10,7 +10,7 @@ $tab = $_GET['tab'] ?? 'final'; // 'final' or 'provisional'
 
 // Base query based on the selected tab type
 if ($tab === 'provisional') {
-    // Shows models that are Provisional Survey Off and contain assets marked as 'Not In Use' via asset_state
+    // Shows models that are Provisional Survey Off where ALL assets are marked as 'Not In Use' via asset_state
     $query = "SELECT m.*, 
               c.category_name, 
               pc.category_name AS parent_category_name,
@@ -23,7 +23,9 @@ if ($tab === 'provisional') {
               LEFT JOIN vendors v ON m.vendor_id = v.vendor_id
               LEFT JOIN asset_status s ON m.status_id = s.status_id
               LEFT JOIN assets a ON m.model_id = a.model_id
-              WHERE s.status_name = 'Provisional Survey Off'";
+              WHERE s.status_name = 'Provisional Survey Off'
+              GROUP BY m.model_id
+              HAVING SUM(CASE WHEN a.asset_state != 'Not In Use' THEN 1 ELSE 0 END) = 0";
 } else {
     // Shows Final Survey Off models
     $query = "SELECT m.*, 
@@ -38,16 +40,68 @@ if ($tab === 'provisional') {
               LEFT JOIN vendors v ON m.vendor_id = v.vendor_id
               LEFT JOIN asset_status s ON m.status_id = s.status_id
               LEFT JOIN assets a ON m.model_id = a.model_id
-              WHERE s.status_name = 'Final Survey Off'";
+              WHERE s.status_name = 'Final Survey Off'
+              GROUP BY m.model_id";
 }
 
 if (!empty($search)) {
     $search_esc = mysqli_real_escape_string($conn, $search);
-    $query .= " AND (m.model_name LIKE '%$search_esc%' OR c.category_name LIKE '%$search_esc%' OR v.vendor_name LIKE '%$search_esc%' OR m.make_name LIKE '%$search_esc%')";
+    $query .= " HAVING (m.model_name LIKE '%$search_esc%' OR c.category_name LIKE '%$search_esc%' OR v.vendor_name LIKE '%$search_esc%' OR m.make_name LIKE '%$search_esc%')";
 }
 
-$query .= " GROUP BY m.model_id ORDER BY m.model_id ASC";
+$query .= " ORDER BY m.model_id ASC";
+
+/* =========================================================
+   EXPORT LOGIC (EXCEL & CSV)
+   ========================================================= */
+if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel'])) {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    $export_res = mysqli_query($conn, $query);
+    $filename = "Trash_Models_" . ucfirst($tab) . "_" . date('Y-m-d');
+    $isExcel = ($_GET['export'] === 'excel');
+
+    if ($isExcel) {
+        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '.xls"');
+        $delimiter = "\t";
+    } else {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
+        $delimiter = ",";
+    }
+
+    $output = fopen('php://output', 'w');
+    fputcsv($output, ['ID', 'Model Name', 'Category', 'Make', 'Purchase Date', 'Expiry Date', 'Quantity', 'Unit Price', 'Total Assets'], $delimiter);
+
+    $sr = 1;
+    while ($r = mysqli_fetch_assoc($export_res)) {
+        $catName = !empty($r['parent_category_name']) ? $r['parent_category_name'] . ' > ' . $r['category_name'] : ($r['category_name'] ?? 'N/A');
+        fputcsv($output, [
+            $sr++,
+            $r['model_name'],
+            $catName,
+            $r['make_name'] ?? 'N/A',
+            $r['purchase_date'] ?? 'N/A',
+            $r['expiry_date'] ?? 'N/A',
+            $r['quantity'] ?? 0,
+            $r['cost'] ?? 0,
+            $r['total_assets'] ?? 0
+        ], $delimiter);
+    }
+    fclose($output);
+    exit();
+}
+
 $result = mysqli_query($conn, $query);
+
+$exportParams = $_GET;
+$exportParams['export'] = 'excel';
+$exportExcelUrl = '?' . http_build_query($exportParams);
+$exportParams['export'] = 'csv';
+$exportCsvUrl = '?' . http_build_query($exportParams);
 
 include("../../includes/header.php");
 include("../../includes/sidebar.php");
@@ -60,14 +114,28 @@ include("../../includes/sidebar.php");
             <p class="text-muted small mb-0">Decommissioned models and inactive survey assets.</p>
         </div>
         
-        <!-- TABS FOR SWITCHING VIEWS -->
-        <div class="btn-group shadow-sm">
-            <a href="trash_bin.php?tab=final" class="btn <?= $tab === 'final' ? 'btn-dark' : 'btn-outline-dark' ?>">
-                <i class="bi bi-clipboard-x-fill me-1"></i> Final Survey Off
-            </a>
-            <a href="trash_bin.php?tab=provisional" class="btn <?= $tab === 'provisional' ? 'btn-info text-dark fw-bold' : 'btn-outline-info text-dark' ?>">
-                <i class="bi bi-clipboard-minus-fill me-1"></i> Provisional (Not In Use)
-            </a>
+        <div class="d-flex gap-2 flex-wrap">
+            <!-- EXPORT DROPDOWN -->
+            <div class="dropdown position-relative d-inline-block">
+                <button class="btn btn-light bg-white border border-secondary text-dark dropdown-toggle fw-bold shadow-sm" type="button" id="btnExportDropdown">
+                    <i class="bi bi-download me-1"></i> Export List
+                </button>
+                <ul class="dropdown-menu shadow" id="exportDropdownMenu" style="display: none; position: absolute; top: 100%; left: 0; z-index: 1000;">
+                    <li><a class="dropdown-item py-2 fw-bold" href="javascript:void(0)" onclick="exportToPDF()"><i class="bi bi-file-earmark-pdf text-danger me-2"></i> Export as PDF</a></li>
+                    <li><a class="dropdown-item py-2 fw-bold" href="<?= $exportExcelUrl ?>"><i class="bi bi-file-earmark-excel text-success me-2"></i> Export as Excel (.xls)</a></li>
+                    <li><a class="dropdown-item py-2 fw-bold" href="<?= $exportCsvUrl ?>"><i class="bi bi-file-earmark-text text-primary me-2"></i> Export as CSV</a></li>
+                </ul>
+            </div>
+
+            <!-- TABS FOR SWITCHING VIEWS -->
+            <div class="btn-group shadow-sm">
+                <a href="trash_bin.php?tab=final" class="btn <?= $tab === 'final' ? 'btn-dark' : 'btn-outline-dark' ?>">
+                    <i class="bi bi-clipboard-x-fill me-1"></i> Final Survey Off
+                </a>
+                <a href="trash_bin.php?tab=provisional" class="btn <?= $tab === 'provisional' ? 'btn-info text-dark fw-bold' : 'btn-outline-info text-dark' ?>">
+                    <i class="bi bi-clipboard-minus-fill me-1"></i> Provisional (Not In Use)
+                </a>
+            </div>
         </div>
     </div>
 
@@ -109,17 +177,20 @@ include("../../includes/sidebar.php");
     <div class="card shadow-sm">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover table-striped align-middle mb-0" style="white-space: nowrap;">
+                <table class="table table-hover table-striped align-middle mb-0" id="trashTable" style="white-space: nowrap;">
                     <thead class="table-dark">
                         <tr>
                             <th>ID</th>
-                            <th>Logo</th>
+                            <th class="no-export">Logo</th>
                             <th>Model Name</th>
                             <th>Category</th>
                             <th>Make</th>
                             <th>Pur. Date</th>
+                            <th>Exp. Date</th>
+                            <th class="text-center">Qyt</th>
+                            <th>Price</th>
                             <th class="text-center">Total Assets</th>
-                            <th class="text-center">Actions</th>
+                            <th class="text-center no-export">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -127,7 +198,7 @@ include("../../includes/sidebar.php");
                         <?php $sr = 1; while($row = mysqli_fetch_assoc($result)): ?>
                             <tr>
                                 <td><?= $sr++ ?></td>
-                                <td class="text-center" style="width: 50px;">
+                                <td class="text-center no-export" style="width: 50px;">
                                     <?php if (!empty($row['model_image'])): ?>
                                         <img src="../../<?= htmlspecialchars($row['model_image']) ?>" alt="Logo" style="height: 35px; width: 35px; object-fit: contain;" class="rounded border p-1 bg-white">
                                     <?php else: ?>
@@ -136,8 +207,10 @@ include("../../includes/sidebar.php");
                                         </div>
                                     <?php endif; ?>
                                 </td>
-                                <td class="fw-bold text-danger">
-                                    <?= htmlspecialchars($row['model_name']) ?>
+                                <td class="fw-bold">
+                                    <a href="../models/models_details.php?id=<?= $row['model_id'] ?>" class="text-danger text-decoration-none">
+                                        <?= htmlspecialchars($row['model_name']) ?>
+                                    </a>
                                 </td>
                                 <td>
                                     <?php 
@@ -150,25 +223,31 @@ include("../../includes/sidebar.php");
                                 </td>
                                 <td><?= htmlspecialchars($row['make_name'] ?? '-') ?></td>
                                 <td><?= !empty($row['purchase_date']) ? date('d M Y', strtotime($row['purchase_date'])) : '-' ?></td>
+                                <td><?= !empty($row['expiry_date']) ? date('d M Y', strtotime($row['expiry_date'])) : '-' ?></td>
+                                <td class="text-center fw-bold"><?= (int)($row['quantity'] ?? 0) ?></td>
+                                <td class="text-success fw-bold">₹ <?= number_format((float)($row['cost'] ?? 0), 2) ?></td>
                                 <td class="text-center">
                                     <span class="badge bg-secondary"><?= $row['total_assets'] ?></span>
                                 </td>
-                                <td class="text-center">
+                                <td class="text-center no-export">
                                     <div class="btn-group btn-group-sm">
                                         <!-- RESTORE BUTTON -->
                                         <a href="trash_restore.php?id=<?= $row['model_id'] ?>" class="btn btn-success" onclick="return confirm('Restore this model back to active inventory?')" title="Restore Model">
                                             <i class="bi bi-arrow-counterclockwise"></i> Restore
                                         </a>
-                                        <!-- PERMANENT DELETE BUTTON -->
-                                        <a href="trash_delete.php?id=<?= $row['model_id'] ?>" class="btn btn-outline-danger" onclick="return confirm('WARNING: This will permanently delete the model and its files. This action cannot be undone!')" title="Delete Permanently">
-                                            <i class="bi bi-trash-fill"></i> Delete
-                                        </a>
+                                        
+                                        <!-- PERMANENT DELETE BUTTON (Hidden for Provisional Tab) -->
+                                        <?php if ($tab !== 'provisional'): ?>
+                                            <a href="trash_delete.php?id=<?= $row['model_id'] ?>" class="btn btn-outline-danger" onclick="return confirm('WARNING: This will permanently delete the model and its files. This action cannot be undone!')" title="Delete Permanently">
+                                                <i class="bi bi-trash-fill"></i> Delete
+                                            </a>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>
                         <?php endwhile; ?>
                     <?php else: ?>
-                        <tr><td colspan="8" class="text-center py-5 text-muted"><i class="bi bi-trash fs-2 d-block mb-2"></i> Trash bin is empty for this view.</td></tr>
+                        <tr><td colspan="11" class="text-center py-5 text-muted"><i class="bi bi-trash fs-2 d-block mb-2"></i> Trash bin is empty for this view.</td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>
@@ -176,5 +255,56 @@ include("../../includes/sidebar.php");
         </div>
     </div>
 </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const exportBtn = document.getElementById("btnExportDropdown");
+        const exportMenu = document.getElementById("exportDropdownMenu");
+
+        if (exportBtn && exportMenu) {
+            exportBtn.addEventListener("click", function(e) {
+                e.stopPropagation();
+                exportMenu.style.display = (exportMenu.style.display === "block") ? "none" : "block";
+            });
+
+            document.addEventListener("click", function(e) {
+                if (!exportBtn.contains(e.target) && !exportMenu.contains(e.target)) {
+                    exportMenu.style.display = "none";
+                }
+            });
+        }
+    });
+
+    function exportToPDF() {
+        if (typeof window.jspdf === 'undefined') {
+            alert("PDF library is still loading. Please wait a moment.");
+            return;
+        }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('landscape');
+
+        doc.setFontSize(16);
+        doc.text("Trash Bin Models (<?= ucfirst($tab) ?>)", 14, 15);
+
+        document.querySelectorAll('.no-export').forEach(function(el) {
+            el.style.display = 'none';
+        });
+
+        doc.autoTable({
+            html: '#trashTable',
+            startY: 25,
+            styles: { fontSize: 9, cellPadding: 3 },
+            headStyles: { fillColor: [52, 58, 64] }
+        });
+
+        document.querySelectorAll('.no-export').forEach(function(el) {
+            el.style.display = '';
+        });
+
+        doc.save("Trash_Models_<?= ucfirst($tab) ?>_<?= date('Y-m-d') ?>.pdf");
+    }
+</script>
 
 <?php include("../../includes/footer.php"); ?>
