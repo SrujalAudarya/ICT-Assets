@@ -14,20 +14,22 @@ if (isset($_POST['bulk_action']) && !empty($_POST['selected_assets'])) {
     $asset_ids = array_map('intval', $_POST['selected_assets']);
     $ids_string = implode(',', $asset_ids);
 
-    // Look up state ID in asset_status, or create it automatically if missing
-    $st_q = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name = '$action_state' LIMIT 1");
-    if ($st_q && mysqli_num_rows($st_q) > 0) {
-        $target_status_id = mysqli_fetch_assoc($st_q)['status_id'];
-    } else {
-        mysqli_query($conn, "INSERT INTO asset_status (status_name) VALUES ('$action_state')");
-        $target_status_id = mysqli_insert_id($conn);
+    // If marked as 'Not In Use', automatically unassign from user!
+    if ($action_state === 'Not In Use') {
+        mysqli_query($conn, "
+            UPDATE asset_assignments 
+            SET returned_date = CURDATE() 
+            WHERE returned_date IS NULL 
+              AND asset_id IN ($ids_string)
+        ");
     }
 
-    if ($target_status_id) {
-        mysqli_query($conn, "UPDATE assets SET status_id = '$target_status_id' WHERE asset_id IN ($ids_string) AND model_id = '$id'");
-        header("Location: models_details.php?id=" . $id . "&msg=status_updated");
-        exit();
-    }
+    // Updates ONLY the asset_state column, leaving status_id (Assigned/Available) completely untouched!
+    $update_state_q = "UPDATE assets SET asset_state = '$action_state' WHERE asset_id IN ($ids_string) AND model_id = '$id'";
+    @mysqli_query($conn, $update_state_q);
+
+    header("Location: models_details.php?id=" . $id . "&msg=status_updated");
+    exit();
 }
 
 /* ---------- MODEL BASIC INFO ---------- */
@@ -130,7 +132,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel'])) {
             $r['serial_number'],
             $r['category_name'] ?? 'N/A',
             $r['asset_status_name'] ?? 'N/A',
-            $r['model_status_name'] ?? 'N/A',
+            $r['asset_state'] ?? 'Working',
             $r['dept_name'] ?? 'N/A',
             $r['user_name'] ?? 'Not Assigned'
         ], $delimiter);
@@ -426,19 +428,16 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
                                                     </span>
                                                 </td>
 
-                                                <!-- STATE (In Use, Not In Use, Working, Survey Off, etc.) -->
+                                                <!-- STATE (Independent text field tracking In Use / Not In Use) -->
                                                 <td>
                                                     <?php
                                                     $state_class = 'bg-secondary';
-                                                    $state_name = $asset['asset_status_name'] ?? ''; // or model state if preferred
-                                                    // Let's use status name or model status name depending on what state tracks
-                                                    // Here we cleanly map In Use / Not In Use / Working
-                                                    if ($state_name == 'In Use' || $state_name == 'Working') $state_class = 'bg-success';
-                                                    elseif ($state_name == 'Not In Use') $state_class = 'bg-secondary';
-                                                    elseif (strpos($state_name, 'Survey Off') !== false) $state_class = 'bg-dark';
+                                                    $state_val = $asset['asset_state'] ?? 'Working';
+                                                    if ($state_val == 'In Use') $state_class = 'bg-success';
+                                                    elseif ($state_val == 'Not In Use') $state_class = 'bg-secondary text-dark';
                                                     ?>
                                                     <span class="badge <?= $state_class ?> rounded-pill">
-                                                        <?= htmlspecialchars($state_name ?: 'N/A') ?>
+                                                        <?= htmlspecialchars($state_val) ?>
                                                     </span>
                                                 </td>
 

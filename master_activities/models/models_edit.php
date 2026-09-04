@@ -95,7 +95,7 @@ if(isset($_POST['update'])) {
         if (empty($category_id)) {
             $error = "Please select a Category.";
         } else {
-            // --- ADDED status_id TO UPDATE QUERY ---
+            // --- UPDATED QUERY WITH status_id ---
             $query = "UPDATE asset_models SET 
                       model_name='$name', category_id='$category_id', vendor_id='$vendor_id',
                       make_name='$make_name', contract_no='$contract_no', quantity='$quantity',
@@ -105,6 +105,21 @@ if(isset($_POST['update'])) {
                       WHERE model_id=$id";
 
             if(mysqli_query($conn, $query)) {
+                
+                // --- AUTO-UNASSIGN ASSETS IF MODEL BECOMES FINAL SURVEY OFF ---
+                $status_check_q = mysqli_query($conn, "SELECT status_name FROM asset_status WHERE status_id = '$status_id' LIMIT 1");
+                if ($status_check_q && mysqli_num_rows($status_check_q) > 0) {
+                    $st_row = mysqli_fetch_assoc($status_check_q);
+                    if ($st_row['status_name'] == 'Final Survey Off') {
+                        mysqli_query($conn, "
+                            UPDATE asset_assignments 
+                            SET returned_date = CURDATE() 
+                            WHERE returned_date IS NULL 
+                              AND asset_id IN (SELECT asset_id FROM assets WHERE model_id = '$id')
+                        ");
+                    }
+                }
+
                 header("Location: " . ROUTE_MODELS . "?msg=updated");
                 exit();
             } else {

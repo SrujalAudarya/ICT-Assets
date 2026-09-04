@@ -11,7 +11,6 @@ if (isset($_GET['action']) && $_GET['action'] == 'get_model_details') {
     header('Content-Type: application/json');
     $mod_id = (int)$_GET['model_id'];
 
-    // Dynamically pulls the defaults DIRECTLY from the asset_models table
     $query = "SELECT vendor_id, purchase_date, expiry_date AS warranty_expiry, cost 
               FROM asset_models 
               WHERE model_id = $mod_id LIMIT 1";
@@ -30,9 +29,14 @@ if (isset($_GET['action']) && $_GET['action'] == 'get_model_details') {
 $id = isset($_POST['asset_id']) ? (int)$_POST['asset_id'] : (isset($_GET['id']) ? (int)$_GET['id'] : 0);
 
 /* =========================================================
-   FETCH EXISTING ASSET DATA
+   FETCH EXISTING ASSET DATA (FIXED WITH STATUS JOIN)
    ========================================================= */
-$query = "SELECT * FROM assets WHERE asset_id = '$id'";
+$query = "SELECT a.*, st.status_name, ms.status_name AS model_status_name 
+          FROM assets a 
+          LEFT JOIN asset_status st ON a.status_id = st.status_id
+          LEFT JOIN asset_models m ON a.model_id = m.model_id 
+          LEFT JOIN asset_status ms ON m.status_id = ms.status_id 
+          WHERE a.asset_id = '$id'";
 $result = mysqli_query($conn, $query);
 $asset = mysqli_fetch_assoc($result);
 
@@ -80,7 +84,11 @@ if (isset($_POST['update_asset'])) {
     $model_id        = trim($_POST['model_id'] ?? '');
     $vendor_id       = trim($_POST['vendor_id'] ?? '');
     $location_id     = trim($_POST['location_id'] ?? '');
-    $status_id       = trim($_POST['status_id'] ?? '');
+    
+    // If currently assigned, preserve the original status ID to prevent tampering via inspection
+    $is_currently_assigned = ($asset['status_name'] == 'Assigned');
+    $status_id       = $is_currently_assigned ? $asset['status_id'] : trim($_POST['status_id'] ?? '');
+
     $purchase_date   = trim($_POST['purchase_date'] ?? '');
     $warranty_expiry = trim($_POST['warranty_expiry'] ?? '');
     $cost            = trim($_POST['cost'] ?? '');
@@ -125,7 +133,6 @@ if (isset($_POST['update_asset'])) {
         ";
 
         if (mysqli_query($conn, $update_query)) {
-            // Success! Send them back to the list
             header("Location: assets_list.php?msg=updated");
             exit();
         } else {
@@ -139,7 +146,7 @@ $sub_categories  = mysqli_query($conn, "SELECT category_id, category_name, paren
 $models    = mysqli_query($conn, "SELECT model_id, model_name, category_id FROM asset_models ORDER BY model_name ASC");
 $vendors   = mysqli_query($conn, "SELECT vendor_id, vendor_name FROM vendors ORDER BY vendor_name ASC");
 $locations = mysqli_query($conn, "SELECT location_id, dept_name, floor FROM locations ORDER BY dept_name ASC");
-$statuses  = mysqli_query($conn, "SELECT status_id, status_name FROM asset_status ORDER BY status_name ASC");
+$statuses  = mysqli_query($conn, "SELECT status_id, status_name FROM asset_status WHERE status_name IN ('Assigned', 'Available') ORDER BY status_name ASC");
 
 include("../../includes/header.php");
 include("../../includes/sidebar.php");
@@ -163,6 +170,14 @@ include("../../includes/sidebar.php");
         </a>
     </div>
 
+    <!-- NOTIFICATION IF MODEL IS SURVEY OFF -->
+    <?php if (!empty($asset['model_status_name']) && strpos($asset['model_status_name'], 'Survey Off') !== false): ?>
+        <div class="alert alert-dark shadow-sm border-0 d-flex align-items-center mb-4">
+            <i class="bi bi-info-circle-fill me-2 fs-5"></i> 
+            <span>Notice: This asset belongs to a model currently under <strong><?= htmlspecialchars($asset['model_status_name']) ?></strong> state.</span>
+        </div>
+    <?php endif; ?>
+
     <div class="card shadow-sm border-0 border-top border-warning border-4">
         <div class="card-header bg-white py-3">
             <h5 class="mb-0 text-dark fw-bold"><i class="bi bi-pc-display me-2 text-warning"></i> Update Device Specifications</h5>
@@ -174,7 +189,6 @@ include("../../includes/sidebar.php");
             <?php endif; ?>
 
             <form method="post" action="assets_edit.php?id=<?= $id ?>">
-                <!-- CRITICAL: This hidden input ensures the ID doesn't get lost on save! -->
                 <input type="hidden" name="asset_id" value="<?= $id ?>">
 
                 <div class="row">
@@ -263,25 +277,28 @@ include("../../includes/sidebar.php");
                         </select>
                     </div>
 
+                    <!-- ASSET STATUS (LOCKED IF ASSIGNED, SHOWS ONLY ASSIGNED & AVAILABLE) -->
                     <div class="col-md-4 mb-3">
                         <label class="form-label fw-bold">Asset Status <span class="text-danger">*</span></label>
-                        <select name="status_id" id="status_id" class="form-select shadow-sm" required>
+                        <?php $is_assigned = ($asset['status_name'] == 'Assigned'); ?>
+                        <select name="status_id" id="status_id" class="form-select shadow-sm" required <?= $is_assigned ? 'disabled bg-light' : '' ?>>
                             <option value="">Select Status</option>
                             <?php
                             mysqli_data_seek($statuses, 0);
                             while ($row = mysqli_fetch_assoc($statuses)) {
-                                if (in_array($row['status_name'], ['Assigned', 'Available'])) {
-                                    $selected = ($asset['status_id'] == $row['status_id']) ? 'selected' : '';
-                                    echo "<option value='{$row['status_id']}' $selected>" . htmlspecialchars($row['status_name']) . "</option>";
-                                }
+                                $selected = ($asset['status_id'] == $row['status_id']) ? 'selected' : '';
+                                echo "<option value='{$row['status_id']}' $selected>" . htmlspecialchars($row['status_name']) . "</option>";
                             }
                             ?>
                         </select>
+                        <?php if ($is_assigned): ?>
+                            <input type="hidden" name="status_id" value="<?= $asset['status_id'] ?>">
+                            <small class="text-muted">Status is locked because the asset is currently assigned.</small>
+                        <?php endif; ?>
                     </div>
                 </div>
 
                 <div class="row">
-                    <!-- Added ID tags to these inputs so Javascript can auto-fill them -->
                     <div class="col-md-4 mb-3">
                         <label class="form-label fw-bold">Purchase Date</label>
                         <input type="date" name="purchase_date" id="purchase_date" class="form-control shadow-sm" value="<?= htmlspecialchars($asset['purchase_date'] ?? '') ?>">
@@ -369,9 +386,7 @@ include("../../includes/sidebar.php");
             filterSubCategories(true);
         }
 
-        // ----------------------------------------------------
-        // NEW LOGIC: Model Auto-fill Data Fetching
-        // ----------------------------------------------------
+        // Model Auto-fill Data Fetching via AJAX
         const vendorSelect = document.getElementById("vendor_id");
         const purchaseDateInput = document.getElementById("purchase_date");
         const warrantyExpiryInput = document.getElementById("warranty_expiry");
@@ -380,13 +395,10 @@ include("../../includes/sidebar.php");
         modelSelect.addEventListener('change', function() {
             const selectedModelId = this.value;
 
-            // In Edit Mode, we don't clear the fields if they unselect a model 
-            // (so we don't accidentally wipe out their custom data unless they pick a new model)
             if (!selectedModelId) {
                 return;
             }
 
-            // Fetch data for the newly selected model via AJAX
             fetch(window.location.pathname + `?action=get_model_details&model_id=${selectedModelId}`)
                 .then(response => response.json())
                 .then(data => {

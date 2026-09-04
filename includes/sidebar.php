@@ -75,7 +75,7 @@ $is_details_open = in_array($current_page, $asset_details_pages) || !empty($cate
         <div class="master-menu-header">System</div>
 
         <!-- ADDED TRASH BIN OPTION -->
-        <a href="trash_bin.php" class="nav-link <?= isActive(['trash_bin.php']) ?>">
+        <a href="<?= ROUTE_TRASH_BIN ?>" class="nav-link <?= isActive(['trash_bin.php']) ?>">
             <i class="bi bi-trash3 text-danger"></i> Trash Bin
         </a>
     </div>

@@ -64,6 +64,6 @@ const ROUTE_USERS_EDIT = MASTER_PATH . 'users/users_edit.php';
 const ROUTE_USERS_DELETE = MASTER_PATH . 'users/users_delete.php';
 
 // Trash Bin
-const ROUTE_TRASH_BIN = MASTER_PATH . 'trash_bin/trash_bin.php';
-const ROUTE_TRASH_BIN_RESTORE = MASTER_PATH . 'trash_bin/trash_bin_restore.php';
-const ROUTE_TRASH_BIN_DELETE = MASTER_PATH . 'trash_bin/trash_bin_delete.php';
+const ROUTE_TRASH_BIN = MASTER_PATH . 'trash/trash_bin.php';
+const ROUTE_TRASH_BIN_RESTORE = MASTER_PATH . 'trash/trash_bin_restore.php';
+const ROUTE_TRASH_BIN_DELETE = MASTER_PATH . 'trash/trash_bin_delete.php';

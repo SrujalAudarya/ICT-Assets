@@ -23,10 +23,14 @@ $query = "SELECT m.*,
           LEFT JOIN asset_categories pc ON c.parent_id = pc.category_id
           LEFT JOIN vendors v ON m.vendor_id = v.vendor_id
           LEFT JOIN asset_status s ON m.status_id = s.status_id
-          LEFT JOIN assets a ON m.model_id = a.model_id";
+          LEFT JOIN assets a ON m.model_id = a.model_id
+          LEFT JOIN asset_status st_state ON a.status_id = st_state.status_id";
 
 // Dynamic WHERE clause building
 $conditions = [];
+
+// --- HIDE "Final Survey Off" MODELS AND PROVISIONAL MODELS WHERE ALL ASSETS ARE NOT IN USE ---
+$conditions[] = "(s.status_name IS NULL OR s.status_name != 'Final Survey Off')";
 
 if (!empty($search)) {
     $search_esc = mysqli_real_escape_string($conn, $search);
@@ -41,7 +45,6 @@ if (!empty($search)) {
 
 if (!empty($filter_category)) {
     $cat_esc = mysqli_real_escape_string($conn, $filter_category);
-    // Filter by either subcategory or parent category
     $conditions[] = "(m.category_id = '$cat_esc' OR c.parent_id = '$cat_esc')";
 }
 
@@ -54,7 +57,12 @@ if (!empty($conditions)) {
     $query .= " WHERE " . implode(" AND ", $conditions);
 }
 
-$query .= " GROUP BY m.model_id ORDER BY m.model_id ASC";
+$query .= " GROUP BY m.model_id";
+
+// HAVING clause to filter out models where a Provisional Survey Off model has zero active/in-use assets remaining
+$query .= " HAVING (s.status_name IS NULL OR s.status_name != 'Provisional Survey Off' OR SUM(CASE WHEN st_state.status_name != 'Not In Use' THEN 1 ELSE 0 END) > 0)";
+
+$query .= " ORDER BY m.model_id ASC";
 $result = mysqli_query($conn, $query);
 ?>
 
@@ -133,7 +141,7 @@ $result = mysqli_query($conn, $query);
                         </tr>
                     </thead>
                     <tbody>
-                    <?php if(mysqli_num_rows($result) > 0): ?>
+                    <?php if($result && mysqli_num_rows($result) > 0): ?>
                         <?php $sr = 1; while($row = mysqli_fetch_assoc($result)): ?>
                             <tr>
                                 <!-- ID / Serial Number -->
