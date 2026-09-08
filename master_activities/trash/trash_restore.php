@@ -19,7 +19,7 @@ if ($id > 0) {
         
         if ($model['status_name'] === 'Provisional Survey Off') {
             // --- SCENARIO A: RESTORING PROVISIONAL (NOT IN USE) ASSETS ---
-            // 1. Change asset state back to 'In Use' or 'Working' so it returns to active inventory
+            // 1. Change asset state back to 'In Use' so it returns to active inventory
             mysqli_query($conn, "UPDATE assets SET asset_state = 'In Use' WHERE model_id = $id AND asset_state = 'Not In Use'");
 
             // 2. Automatically reassign these assets to their last active/previous user from asset_assignments
@@ -61,12 +61,16 @@ if ($id > 0) {
 
         } else {
             // --- SCENARIO B: RESTORING FINAL SURVEY OFF MODEL ---
-            // Change model status back to 'Working' to return it and its assets to active modules
-            $working_status_q = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name = 'Working' LIMIT 1");
-            if ($working_status_q && mysqli_num_rows($working_status_q) > 0) {
-                $working_status_id = mysqli_fetch_assoc($working_status_q)['status_id'];
-                mysqli_query($conn, "UPDATE asset_models SET status_id = $working_status_id WHERE model_id = $id");
+            // When restoring from Final Survey Off:
+            // 1. Change model status to 'Provisional Survey Off'
+            $prov_status_q = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name = 'Provisional Survey Off' LIMIT 1");
+            if ($prov_status_q && mysqli_num_rows($prov_status_q) > 0) {
+                $prov_status_id = mysqli_fetch_assoc($prov_status_q)['status_id'];
+                mysqli_query($conn, "UPDATE asset_models SET status_id = $prov_status_id WHERE model_id = $id");
             }
+
+            // 2. Change asset states to 'Not In Use' so they route to the Provisional Trash Bin view
+            mysqli_query($conn, "UPDATE assets SET asset_state = 'Not In Use' WHERE model_id = $id");
         }
 
         header("Location: trash_bin.php?msg=restored");

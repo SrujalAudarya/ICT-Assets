@@ -60,7 +60,8 @@ if (!empty($conditions)) {
 $query .= " GROUP BY m.model_id";
 
 // HAVING clause to filter out models where a Provisional Survey Off model has zero active/in-use assets remaining
-$query .= " HAVING (s.status_name IS NULL OR s.status_name != 'Provisional Survey Off' OR SUM(CASE WHEN st_state.status_name != 'Not In Use' THEN 1 ELSE 0 END) > 0)";
+// Also ensure models where ALL assets are 'Not In Use' are hidden from the active list
+$query .= " HAVING (s.status_name IS NULL OR s.status_name != 'Provisional Survey Off' OR SUM(CASE WHEN a.asset_state != 'Not In Use' THEN 1 ELSE 0 END) > 0)";
 
 $query .= " ORDER BY m.model_id ASC";
 $result = mysqli_query($conn, $query);

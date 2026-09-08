@@ -1,8 +1,39 @@
 <?php
+ob_start();
 global $conn;
 
 include("../../includes/auth.php");
 include("../../config/db.php");
+
+/* =========================================================
+   HANDLE DIRECT FINALIZE ACTION (Provisional -> Final Survey Off)
+========================================================= */
+if (isset($_GET['action']) && $_GET['action'] === 'finalize' && isset($_GET['id'])) {
+    $model_id = (int)$_GET['id'];
+
+    // Fetch 'Final Survey Off' status ID
+    $status_q = mysqli_query($conn, "SELECT status_id FROM asset_status WHERE status_name = 'Final Survey Off' LIMIT 1");
+    if ($status_q && mysqli_num_rows($status_q) > 0) {
+        $final_status_id = mysqli_fetch_assoc($status_q)['status_id'];
+
+        // Update model status to 'Final Survey Off'
+        mysqli_query($conn, "UPDATE asset_models SET status_id = $final_status_id WHERE model_id = $model_id");
+
+        // Ensure active asset assignments are closed out
+        mysqli_query($conn, "
+            UPDATE asset_assignments 
+            SET returned_date = CURDATE() 
+            WHERE returned_date IS NULL 
+              AND asset_id IN (SELECT asset_id FROM assets WHERE model_id = $model_id)
+        ");
+
+        header("Location: trash_bin.php?tab=provisional&msg=finalized");
+        exit();
+    } else {
+        header("Location: trash_bin.php?tab=provisional&msg=error");
+        exit();
+    }
+}
 
 // Filter & Search values
 $search = trim($_GET['search'] ?? '');
@@ -113,7 +144,7 @@ include("../../includes/sidebar.php");
             <h2><i class="bi bi-trash3 text-danger me-2"></i> Trash Bin Management</h2>
             <p class="text-muted small mb-0">Decommissioned models and inactive survey assets.</p>
         </div>
-        
+
         <div class="d-flex gap-2 flex-wrap">
             <!-- EXPORT DROPDOWN -->
             <div class="dropdown position-relative d-inline-block">
@@ -144,6 +175,10 @@ include("../../includes/sidebar.php");
         <?php if ($_GET['msg'] == 'restored'): ?>
             <div class="alert alert-success shadow-sm border-0 d-flex align-items-center mb-4">
                 <i class="bi bi-check-circle-fill me-2 fs-5"></i> Model successfully restored to active inventory.
+            </div>
+        <?php elseif ($_GET['msg'] == 'finalized'): ?>
+            <div class="alert alert-dark shadow-sm border-0 d-flex align-items-center mb-4">
+                <i class="bi bi-clipboard-x-fill me-2 fs-5"></i> Model successfully moved to Final Survey Off.
             </div>
         <?php elseif ($_GET['msg'] == 'deleted'): ?>
             <div class="alert alert-danger shadow-sm border-0 d-flex align-items-center mb-4">
@@ -194,61 +229,74 @@ include("../../includes/sidebar.php");
                         </tr>
                     </thead>
                     <tbody>
-                    <?php if($result && mysqli_num_rows($result) > 0): ?>
-                        <?php $sr = 1; while($row = mysqli_fetch_assoc($result)): ?>
-                            <tr>
-                                <td><?= $sr++ ?></td>
-                                <td class="text-center no-export" style="width: 50px;">
-                                    <?php if (!empty($row['model_image'])): ?>
-                                        <img src="../../<?= htmlspecialchars($row['model_image']) ?>" alt="Logo" style="height: 35px; width: 35px; object-fit: contain;" class="rounded border p-1 bg-white">
-                                    <?php else: ?>
-                                        <div class="bg-light border text-muted d-flex align-items-center justify-content-center rounded mx-auto" style="height: 35px; width: 35px;">
-                                            <i class="bi bi-image fs-6"></i>
-                                        </div>
-                                    <?php endif; ?>
-                                </td>
-                                <td class="fw-bold">
-                                    <a href="../models/models_details.php?id=<?= $row['model_id'] ?>" class="text-danger text-decoration-none">
-                                        <?= htmlspecialchars($row['model_name']) ?>
-                                    </a>
-                                </td>
-                                <td>
-                                    <?php 
+                        <?php if ($result && mysqli_num_rows($result) > 0): ?>
+                            <?php $sr = 1;
+                            while ($row = mysqli_fetch_assoc($result)): ?>
+                                <tr>
+                                    <td><?= $sr++ ?></td>
+                                    <td class="text-center no-export" style="width: 50px;">
+                                        <?php if (!empty($row['model_image'])): ?>
+                                            <img src="../../<?= htmlspecialchars($row['model_image']) ?>" alt="Logo" style="height: 35px; width: 35px; object-fit: contain;" class="rounded border p-1 bg-white">
+                                        <?php else: ?>
+                                            <div class="bg-light border text-muted d-flex align-items-center justify-content-center rounded mx-auto" style="height: 35px; width: 35px;">
+                                                <i class="bi bi-image fs-6"></i>
+                                            </div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="fw-bold">
+                                        <a href="../models/models_details.php?id=<?= $row['model_id'] ?>" class="text-danger text-decoration-none">
+                                            <?= htmlspecialchars($row['model_name']) ?>
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <?php
                                         if (!empty($row['parent_category_name'])) {
                                             echo htmlspecialchars($row['parent_category_name']) . ' &raquo; ' . htmlspecialchars($row['category_name']);
                                         } else {
                                             echo htmlspecialchars($row['category_name'] ?? '-');
                                         }
-                                    ?>
-                                </td>
-                                <td><?= htmlspecialchars($row['make_name'] ?? '-') ?></td>
-                                <td><?= !empty($row['purchase_date']) ? date('d M Y', strtotime($row['purchase_date'])) : '-' ?></td>
-                                <td><?= !empty($row['expiry_date']) ? date('d M Y', strtotime($row['expiry_date'])) : '-' ?></td>
-                                <td class="text-center fw-bold"><?= (int)($row['quantity'] ?? 0) ?></td>
-                                <td class="text-success fw-bold">₹ <?= number_format((float)($row['cost'] ?? 0), 2) ?></td>
-                                <td class="text-center">
-                                    <span class="badge bg-secondary"><?= $row['total_assets'] ?></span>
-                                </td>
-                                <td class="text-center no-export">
-                                    <div class="btn-group btn-group-sm">
-                                        <!-- RESTORE BUTTON -->
-                                        <a href="trash_restore.php?id=<?= $row['model_id'] ?>" class="btn btn-success" onclick="return confirm('Restore this model back to active inventory?')" title="Restore Model">
-                                            <i class="bi bi-arrow-counterclockwise"></i> Restore
-                                        </a>
-                                        
-                                        <!-- PERMANENT DELETE BUTTON (Hidden for Provisional Tab) -->
-                                        <?php if ($tab !== 'provisional'): ?>
-                                            <a href="trash_delete.php?id=<?= $row['model_id'] ?>" class="btn btn-outline-danger" onclick="return confirm('WARNING: This will permanently delete the model and its files. This action cannot be undone!')" title="Delete Permanently">
-                                                <i class="bi bi-trash-fill"></i> Delete
+                                        ?>
+                                    </td>
+                                    <td><?= htmlspecialchars($row['make_name'] ?? '-') ?></td>
+                                    <td><?= !empty($row['purchase_date']) ? date('d M Y', strtotime($row['purchase_date'])) : '-' ?></td>
+                                    <td><?= !empty($row['expiry_date']) ? date('d M Y', strtotime($row['expiry_date'])) : '-' ?></td>
+                                    <td class="text-center fw-bold"><?= (int)($row['quantity'] ?? 0) ?></td>
+                                    <!-- Added data-raw-cost attribute to cleanly parse prices in PDF generation -->
+                                    <td class="text-success fw-bold" data-raw-cost="<?= (float)($row['cost'] ?? 0) ?>">
+                                        ₹ <?= number_format((float)($row['cost'] ?? 0), 2) ?>
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge bg-secondary"><?= $row['total_assets'] ?></span>
+                                    </td>
+                                    <td class="text-center no-export">
+                                        <div class="btn-group btn-group-sm">
+                                            <!-- RESTORE BUTTON -->
+                                            <a href="trash_restore.php?id=<?= $row['model_id'] ?>" class="btn btn-success" onclick="return confirm('Restore this model back to active inventory?')" title="Restore Model">
+                                                <i class="bi bi-arrow-counterclockwise"></i> Restore
                                             </a>
-                                        <?php endif; ?>
-                                    </div>
-                                </td>
+
+                                            <!-- MOVE TO FINAL SURVEY OFF BUTTON (Only for Provisional Tab) -->
+                                            <?php if ($tab === 'provisional'): ?>
+                                                <a href="trash_bin.php?tab=provisional&action=finalize&id=<?= $row['model_id'] ?>" class="btn btn-dark" onclick="return confirm('Are you sure you want to move this model directly to Final Survey Off?')" title="Move to Final Survey Off">
+                                                    <i class="bi bi-clipboard-x-fill"></i> Final Survey Off
+                                                </a>
+                                            <?php endif; ?>
+
+                                            <!-- PERMANENT DELETE BUTTON (Hidden for Provisional Tab) -->
+                                            <?php if ($tab !== 'provisional'): ?>
+                                                <a href="trash_delete.php?id=<?= $row['model_id'] ?>" class="btn btn-outline-danger" onclick="return confirm('WARNING: This will permanently delete the model and its files. This action cannot be undone!')" title="Delete Permanently">
+                                                    <i class="bi bi-trash-fill"></i> Delete
+                                                </a>
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endwhile; ?>
+                        <?php else: ?>
+                            <tr>
+                                <td colspan="11" class="text-center py-5 text-muted"><i class="bi bi-trash fs-2 d-block mb-2"></i> Trash bin is empty for this view.</td>
                             </tr>
-                        <?php endwhile; ?>
-                    <?php else: ?>
-                        <tr><td colspan="11" class="text-center py-5 text-muted"><i class="bi bi-trash fs-2 d-block mb-2"></i> Trash bin is empty for this view.</td></tr>
-                    <?php endif; ?>
+                        <?php endif; ?>
                     </tbody>
                 </table>
             </div>
@@ -288,17 +336,42 @@ include("../../includes/sidebar.php");
         doc.setFontSize(16);
         doc.text("Trash Bin Models (<?= ucfirst($tab) ?>)", 14, 15);
 
+        // Temporarily hide elements marked as no-export
         document.querySelectorAll('.no-export').forEach(function(el) {
             el.style.display = 'none';
         });
+
+        let priceColIndex = -1;
 
         doc.autoTable({
             html: '#trashTable',
             startY: 25,
             styles: { fontSize: 9, cellPadding: 3 },
-            headStyles: { fillColor: [52, 58, 64] }
+            headStyles: { fillColor: [52, 58, 64] },
+            didParseCell: function(data) {
+                // Dynamically detect the "Price" column index after hidden columns are removed
+                if (data.section === 'head' && data.cell.text.join('').trim() === 'Price') {
+                    priceColIndex = data.column.index;
+                }
+
+                // Format the price cell cleanly
+                if (data.section === 'body' && data.column.index === priceColIndex) {
+                    let rawEl = data.cell.raw;
+                    let costVal = 0;
+                    
+                    if (rawEl && rawEl.nodeType === 1) {
+                        let attrVal = rawEl.getAttribute('data-raw-cost');
+                        if (attrVal !== null) {
+                            costVal = parseFloat(attrVal);
+                        }
+                    }
+                    
+                    data.cell.text = ['Rs. ' + costVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })];
+                }
+            }
         });
 
+        // Restore hidden elements
         document.querySelectorAll('.no-export').forEach(function(el) {
             el.style.display = '';
         });
@@ -307,4 +380,7 @@ include("../../includes/sidebar.php");
     }
 </script>
 
-<?php include("../../includes/footer.php"); ?>
+<?php
+if (ob_get_length()) ob_end_flush();
+include("../../includes/footer.php");
+?>
