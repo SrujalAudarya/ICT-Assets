@@ -68,11 +68,33 @@ if (!$model) {
 $model_status_check = $model['model_status_name'] ?? '';
 $is_survey_off_model = (strpos($model_status_check, 'Survey Off') !== false);
 
+/* ---------- FETCH ASSET STATE COUNTS (In Use vs Not In Use) ---------- */
+$state_counts_query = mysqli_query($conn, "
+    SELECT 
+        SUM(CASE WHEN asset_state = 'In Use' OR asset_state IS NULL THEN 1 ELSE 0 END) AS in_use_count,
+        SUM(CASE WHEN asset_state = 'Not In Use' THEN 1 ELSE 0 END) AS not_in_use_count
+    FROM assets 
+    WHERE model_id = '$id'
+");
+$state_counts = mysqli_fetch_assoc($state_counts_query);
+$in_use_assets = $state_counts['in_use_count'] ?? 0;
+$not_in_use_assets = $state_counts['not_in_use_count'] ?? 0;
+
 /* ---------- FILTER HANDLING ---------- */
 $status = $_GET['status'] ?? '';
 $location = $_GET['location'] ?? '';
+$state_filter = $_GET['state'] ?? '';
 
+// Base query filter
 $where = "WHERE a.model_id = '$id'";
+
+if ($state_filter != "") {
+    $state_escaped = mysqli_real_escape_string($conn, $state_filter);
+    $where .= " AND a.asset_state = '$state_escaped'";
+} else {
+    // Default to hiding 'Not In Use' assets on the active model details view
+    $where .= " AND (a.asset_state != 'Not In Use' OR a.asset_state IS NULL)";
+}
 
 if($status != ""){
     $status_escaped = mysqli_real_escape_string($conn, $status);
@@ -190,7 +212,7 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
                     <li><a class="dropdown-item py-2 fw-bold" href="<?= $exportCsvUrl ?>"><i class="bi bi-file-earmark-text text-primary me-2"></i> Export as CSV</a></li>
                 </ul>
             </div>
-            
+
             <a href="<?= ROUTE_MODELS_EDIT ?>?id=<?= $id ?>" class="btn btn-warning fw-bold text-dark"><i class="bi bi-pencil-fill me-1"></i> Edit Model</a>
             <a href="<?= ROUTE_MODELS ?>" class="btn btn-secondary fw-bold"><i class="bi bi-arrow-left me-1"></i> Back</a>
         </div>
@@ -223,7 +245,10 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
                     </div>
 
                     <table class="table table-sm table-borderless">
-                        <tr><th width="40%" class="text-muted">Model Name</th><td class="fw-bold"><?= htmlspecialchars($model['model_name']) ?></td></tr>
+                        <tr>
+                            <th width="40%" class="text-muted">Model Name</th>
+                            <td class="fw-bold"><?= htmlspecialchars($model['model_name']) ?></td>
+                        </tr>
                         <tr>
                             <th class="text-muted align-middle">Model State</th>
                             <td>
@@ -248,36 +273,60 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
                                 </span>
                             </td>
                         </tr>
-                        <tr><th class="text-muted">Make</th><td><?= htmlspecialchars($model['make_name'] ?: 'N/A') ?></td></tr>
+                        <tr>
+                            <th class="text-muted">Make</th>
+                            <td><?= htmlspecialchars($model['make_name'] ?: 'N/A') ?></td>
+                        </tr>
                         <tr>
                             <th class="text-muted">Category</th>
                             <td>
-                                <?php 
-                                    if (!empty($model['parent_category_name'])) {
-                                        echo htmlspecialchars($model['parent_category_name']) . ' &raquo; <span class="fw-bold">' . htmlspecialchars($model['category_name']) . '</span>';
-                                    } else {
-                                        echo '<span class="fw-bold">' . htmlspecialchars($model['category_name'] ?: 'N/A') . '</span>';
-                                    }
+                                <?php
+                                if (!empty($model['parent_category_name'])) {
+                                    echo htmlspecialchars($model['parent_category_name']) . ' &raquo; <span class="fw-bold">' . htmlspecialchars($model['category_name']) . '</span>';
+                                } else {
+                                    echo '<span class="fw-bold">' . htmlspecialchars($model['category_name'] ?: 'N/A') . '</span>';
+                                }
                                 ?>
                             </td>
                         </tr>
-                        <tr><th class="text-muted">Vendor</th><td><?= htmlspecialchars($model['vendor_name'] ?: 'N/A') ?></td></tr>
-                        <tr><th class="text-muted">Contract No</th><td><code><?= htmlspecialchars($model['contract_no'] ?: 'N/A') ?></code></td></tr>
-                        <tr class="border-top"><th class="text-muted pt-2">Quantity</th><td class="pt-2"><span class="badge bg-secondary"><?= (int)($model['quantity'] ?? 0) ?> Units</span></td></tr>
-                        <tr><th class="text-muted">Unit Cost</th><td class="text-success fw-bold">₹ <?= number_format((float)($model['cost'] ?? 0), 2) ?></td></tr>
-                        <tr><th class="text-muted">Total Value</th><td class="text-primary fw-bold">₹ <?= number_format(((int)($model['quantity'] ?? 0) * (float)($model['cost'] ?? 0)), 2) ?></td></tr>
-                        <tr><th class="text-muted">F.Y.</th><td><?= htmlspecialchars($model['financial_year'] ?: 'N/A') ?></td></tr>
-                        <tr class="border-top"><th class="text-muted pt-2">Purchase Date</th><td class="pt-2 fw-bold"><?= !empty($model['purchase_date']) ? date('d M Y', strtotime($model['purchase_date'])) : 'N/A' ?></td></tr>
+                        <tr>
+                            <th class="text-muted">Vendor</th>
+                            <td><?= htmlspecialchars($model['vendor_name'] ?: 'N/A') ?></td>
+                        </tr>
+                        <tr>
+                            <th class="text-muted">Contract No</th>
+                            <td><code><?= htmlspecialchars($model['contract_no'] ?: 'N/A') ?></code></td>
+                        </tr>
+                        <tr class="border-top">
+                            <th class="text-muted pt-2">Quantity</th>
+                            <td class="pt-2"><span class="badge bg-secondary"><?= (int)($model['quantity'] ?? 0) ?> Units</span></td>
+                        </tr>
+                        <tr>
+                            <th class="text-muted">Unit Cost</th>
+                            <td class="text-success fw-bold">₹ <?= number_format((float)($model['cost'] ?? 0), 2) ?></td>
+                        </tr>
+                        <tr>
+                            <th class="text-muted">Total Value</th>
+                            <td class="text-primary fw-bold">₹ <?= number_format(((int)($model['quantity'] ?? 0) * (float)($model['cost'] ?? 0)), 2) ?></td>
+                        </tr>
+                        <tr>
+                            <th class="text-muted">F.Y.</th>
+                            <td><?= htmlspecialchars($model['financial_year'] ?: 'N/A') ?></td>
+                        </tr>
+                        <tr class="border-top">
+                            <th class="text-muted pt-2">Purchase Date</th>
+                            <td class="pt-2 fw-bold"><?= !empty($model['purchase_date']) ? date('d M Y', strtotime($model['purchase_date'])) : 'N/A' ?></td>
+                        </tr>
                         <tr>
                             <th class="text-muted">Warranty Expiry</th>
                             <td>
-                                <?php 
-                                    if (!empty($model['expiry_date'])) {
-                                        $is_exp = strtotime($model['expiry_date']) < time();
-                                        echo "<span class='fw-bold " . ($is_exp ? "text-danger" : "text-success") . "'>" . date('d M Y', strtotime($model['expiry_date'])) . "</span>";
-                                    } else {
-                                        echo 'N/A';
-                                    }
+                                <?php
+                                if (!empty($model['expiry_date'])) {
+                                    $is_exp = strtotime($model['expiry_date']) < time();
+                                    echo "<span class='fw-bold " . ($is_exp ? "text-danger" : "text-success") . "'>" . date('d M Y', strtotime($model['expiry_date'])) . "</span>";
+                                } else {
+                                    echo 'N/A';
+                                }
                                 ?>
                             </td>
                         </tr>
@@ -309,7 +358,18 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
             <div class="card shadow-sm mb-4 border-0 border-top border-info border-4 bg-info bg-opacity-10">
                 <div class="card-body text-center py-4">
                     <h6 class="text-muted fw-bold mb-2 text-uppercase">Total Assets of this Model</h6>
-                    <h1 class="display-3 fw-bolder text-info mb-0"><?= $total_assets ?></h1>
+                    <h1 class="display-3 fw-bolder text-info mb-3"><?= $total_assets ?></h1>
+
+                    <?php if ($is_survey_off_model): ?>
+                        <div class="d-flex justify-content-center gap-2 border-top pt-3">
+                            <a href="models_details.php?id=<?= $id ?>&state=In%20Use" class="badge bg-success px-3 py-2 shadow-sm text-decoration-none">
+                                <i class="bi bi-check-circle me-1"></i> In Use: <strong><?= $in_use_assets ?></strong>
+                            </a>
+                            <a href="../trash/trash_model_view.php?id=<?= $model['model_id'] ?>" class="badge bg-secondary text-dark px-3 py-2 shadow-sm border text-decoration-none" title="View in Trash View">
+                                <i class="bi bi-dash-circle me-1"></i> Not In Use: <strong><?= $not_in_use_assets ?></strong>
+                            </a>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -329,10 +389,10 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
                                 $sts_query = "SELECT DISTINCT s.status_id, s.status_name 
                                               FROM asset_status s
                                               JOIN assets a ON s.status_id = a.status_id
-                                              WHERE a.model_id = '$id'
+                                              WHERE a.model_id = '$id' AND (a.asset_state != 'Not In Use' OR a.asset_state IS NULL)
                                               ORDER BY s.status_name ASC";
                                 $sts = mysqli_query($conn, $sts_query);
-                                while($s = mysqli_fetch_assoc($sts)){
+                                while ($s = mysqli_fetch_assoc($sts)) {
                                     $selected = ($status == $s['status_id']) ? "selected" : "";
                                     echo "<option value='{$s['status_id']}' $selected>{$s['status_name']}</option>";
                                 }
@@ -348,10 +408,10 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
                                 $loc_query = "SELECT DISTINCT l.location_id, l.dept_name 
                                               FROM locations l
                                               JOIN assets a ON l.location_id = a.location_id
-                                              WHERE a.model_id = '$id'
+                                              WHERE a.model_id = '$id' AND (a.asset_state != 'Not In Use' OR a.asset_state IS NULL)
                                               ORDER BY l.dept_name ASC";
                                 $locs = mysqli_query($conn, $loc_query);
-                                while($l = mysqli_fetch_assoc($locs)){
+                                while ($l = mysqli_fetch_assoc($locs)) {
                                     $selected = ($location == $l['location_id']) ? "selected" : "";
                                     echo "<option value='{$l['location_id']}' $selected>{$l['dept_name']}</option>";
                                 }
@@ -369,13 +429,13 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
 
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 fw-bold text-dark">Linked Assets</h5>
+                    <h5 class="mb-0 fw-bold text-dark">Linked Assets (In Use)</h5>
                     <span class="badge bg-dark rounded-pill px-3"><?= $filtered_count ?> Results</span>
                 </div>
-                
+
                 <!-- BULK ACTIONS FORM WRAPPER -->
                 <form method="POST">
-                    
+
                     <!-- SHOW QUICK STATE UPDATE BUTTONS ONLY FOR SURVEY OFF MODELS -->
                     <?php if ($is_survey_off_model): ?>
                         <div class="bg-light p-3 border-bottom d-flex align-items-center gap-2 flex-wrap">
@@ -383,7 +443,7 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
                             <button type="submit" name="bulk_action" value="In Use" class="btn btn-sm btn-success fw-bold shadow-sm" onclick="return confirm('Set selected assets state to In Use?')">
                                 <i class="bi bi-check-circle-fill me-1"></i> Mark Selected as In Use
                             </button>
-                            <button type="submit" name="bulk_action" value="Not In Use" class="btn btn-sm btn-outline-secondary fw-bold shadow-sm" onclick="return confirm('Set selected assets state to Not In Use?')">
+                            <button type="submit" name="bulk_action" value="Not In Use" class="btn btn-sm btn-outline-secondary fw-bold shadow-sm" onclick="return confirm('Set selected assets state to Not In Use? This will move them to the provisional trash bin.')">
                                 <i class="bi bi-dash-circle me-1"></i> Mark Selected as Not In Use
                             </button>
                         </div>
@@ -410,8 +470,8 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php if($filtered_count > 0): ?>
-                                        <?php while($asset = mysqli_fetch_assoc($assets_result)): ?>
+                                    <?php if ($filtered_count > 0): ?>
+                                        <?php while ($asset = mysqli_fetch_assoc($assets_result)): ?>
                                             <tr>
                                                 <?php if ($is_survey_off_model): ?>
                                                     <td class="ps-3">
@@ -420,7 +480,7 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
                                                 <?php endif; ?>
                                                 <td class="<?= $is_survey_off_model ? '' : 'ps-3' ?> fw-bold text-dark"><?= htmlspecialchars($asset['asset_name']) ?></td>
                                                 <td><code class="bg-primary bg-opacity-10 text-primary px-2 py-1 rounded"><?= htmlspecialchars($asset['serial_number']) ?></code></td>
-                                                
+
                                                 <!-- STATUS (Assigned, Available, etc.) -->
                                                 <td>
                                                     <?php
@@ -466,7 +526,7 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
                                         <tr>
                                             <td colspan="<?= $is_survey_off_model ? 8 : 7 ?>" class="text-center py-5 text-muted">
                                                 <i class="bi bi-inboxes fs-2 d-block mb-2 opacity-50"></i>
-                                                <h6 class="mb-0">No assets found matching your criteria.</h6>
+                                                <h6 class="mb-0">No active (In Use) assets found for this model.</h6>
                                             </td>
                                         </tr>
                                     <?php endif; ?>
@@ -515,11 +575,13 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
             alert("PDF library is still loading. Please wait a moment.");
             return;
         }
-        const { jsPDF } = window.jspdf;
+        const {
+            jsPDF
+        } = window.jspdf;
         const doc = new jsPDF('landscape');
 
         doc.setFontSize(16);
-        doc.text("Assets in Model: <?= addslashes($model['model_name']) ?>", 14, 15);
+        doc.text("Active Assets in Model: <?= addslashes($model['model_name']) ?>", 14, 15);
 
         document.querySelectorAll('.no-export').forEach(function(el) {
             el.style.display = 'none';
@@ -528,8 +590,13 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
         doc.autoTable({
             html: '#assetsTable',
             startY: 25,
-            styles: { fontSize: 9, cellPadding: 3 },
-            headStyles: { fillColor: [52, 58, 64] }
+            styles: {
+                fontSize: 9,
+                cellPadding: 3
+            },
+            headStyles: {
+                fillColor: [52, 58, 64]
+            }
         });
 
         document.querySelectorAll('.no-export').forEach(function(el) {
@@ -537,11 +604,11 @@ $add_asset_link = "../assets/assets_add.php?model_id={$id}&main_category_id={$ma
         });
 
         const safeFilename = "<?= addslashes($model['model_name']) ?>".replace(/[^a-zA-Z0-9_-]/g, "_");
-        doc.save("Model_Assets_" + safeFilename + "_<?= date('Y-m-d') ?>.pdf");
+        doc.save("Model_Active_Assets_" + safeFilename + "_<?= date('Y-m-d') ?>.pdf");
     }
 </script>
 
-<?php 
-if(ob_get_length()) ob_end_flush();
-include("../../includes/footer.php"); 
+<?php
+if (ob_get_length()) ob_end_flush();
+include("../../includes/footer.php");
 ?>

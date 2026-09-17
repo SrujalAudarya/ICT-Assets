@@ -41,7 +41,7 @@ $tab = $_GET['tab'] ?? 'final'; // 'final' or 'provisional'
 
 // Base query based on the selected tab type
 if ($tab === 'provisional') {
-    // Shows models that are Provisional Survey Off where ALL assets are marked as 'Not In Use' via asset_state
+    // Shows models that are Provisional Survey Off where at least one asset is marked as 'Not In Use' via asset_state
     $query = "SELECT m.*, 
               c.category_name, 
               pc.category_name AS parent_category_name,
@@ -56,7 +56,7 @@ if ($tab === 'provisional') {
               LEFT JOIN assets a ON m.model_id = a.model_id
               WHERE s.status_name = 'Provisional Survey Off'
               GROUP BY m.model_id
-              HAVING SUM(CASE WHEN a.asset_state != 'Not In Use' THEN 1 ELSE 0 END) = 0";
+              HAVING SUM(CASE WHEN a.asset_state = 'Not In Use' THEN 1 ELSE 0 END) > 0";
 } else {
     // Shows Final Survey Off models
     $query = "SELECT m.*, 
@@ -244,7 +244,7 @@ include("../../includes/sidebar.php");
                                         <?php endif; ?>
                                     </td>
                                     <td class="fw-bold">
-                                        <a href="../models/models_details.php?id=<?= $row['model_id'] ?>" class="text-danger text-decoration-none">
+                                        <a href="/trash_model_view.php?id=<?= $row['model_id'] ?>" class="text-danger text-decoration-none" title="View Inactive Assets">
                                             <?= htmlspecialchars($row['model_name']) ?>
                                         </a>
                                     </td>
@@ -330,7 +330,9 @@ include("../../includes/sidebar.php");
             alert("PDF library is still loading. Please wait a moment.");
             return;
         }
-        const { jsPDF } = window.jspdf;
+        const {
+            jsPDF
+        } = window.jspdf;
         const doc = new jsPDF('landscape');
 
         doc.setFontSize(16);
@@ -346,8 +348,13 @@ include("../../includes/sidebar.php");
         doc.autoTable({
             html: '#trashTable',
             startY: 25,
-            styles: { fontSize: 9, cellPadding: 3 },
-            headStyles: { fillColor: [52, 58, 64] },
+            styles: {
+                fontSize: 9,
+                cellPadding: 3
+            },
+            headStyles: {
+                fillColor: [52, 58, 64]
+            },
             didParseCell: function(data) {
                 // Dynamically detect the "Price" column index after hidden columns are removed
                 if (data.section === 'head' && data.cell.text.join('').trim() === 'Price') {
@@ -358,15 +365,18 @@ include("../../includes/sidebar.php");
                 if (data.section === 'body' && data.column.index === priceColIndex) {
                     let rawEl = data.cell.raw;
                     let costVal = 0;
-                    
+
                     if (rawEl && rawEl.nodeType === 1) {
                         let attrVal = rawEl.getAttribute('data-raw-cost');
                         if (attrVal !== null) {
                             costVal = parseFloat(attrVal);
                         }
                     }
-                    
-                    data.cell.text = ['Rs. ' + costVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })];
+
+                    data.cell.text = ['Rs. ' + costVal.toLocaleString('en-IN', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    })];
                 }
             }
         });

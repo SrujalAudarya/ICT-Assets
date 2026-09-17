@@ -202,7 +202,7 @@ $status   = $_GET['status'] ?? '';
 $location = $_GET['location'] ?? '';
 $model    = $_GET['model'] ?? '';
 
-// Base lifecycle filter: HIDE Final Survey Off models AND Provisional + Not In Use assets
+// Base lifecycle filter: HIDE Final Survey Off models AND Provisional + Not In Use individual assets
 $where = "WHERE (ms.status_name IS NULL OR ms.status_name != 'Final Survey Off') 
           AND NOT (ms.status_name = 'Provisional Survey Off' AND a.asset_state = 'Not In Use')";
 
