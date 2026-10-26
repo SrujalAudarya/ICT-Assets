@@ -29,18 +29,18 @@ $query = "SELECT m.*,
 // Dynamic WHERE clause building
 $conditions = [];
 
-// --- HIDE "Final Survey Off" MODELS AND PROVISIONAL MODELS WHERE ALL ASSETS ARE NOT IN USE ---
+// --- HIDE "Final Survey Off" MODELS ---
 $conditions[] = "(s.status_name IS NULL OR s.status_name != 'Final Survey Off')";
 
 if (!empty($search)) {
     $search_esc = mysqli_real_escape_string($conn, $search);
     $conditions[] = "(m.model_name LIKE '%$search_esc%' 
-                      OR c.category_name LIKE '%$search_esc%' 
-                      OR pc.category_name LIKE '%$search_esc%' 
-                      OR v.vendor_name LIKE '%$search_esc%' 
-                      OR m.make_name LIKE '%$search_esc%' 
-                      OR m.contract_no LIKE '%$search_esc%' 
-                      OR m.financial_year LIKE '%$search_esc%')";
+                     OR c.category_name LIKE '%$search_esc%' 
+                     OR pc.category_name LIKE '%$search_esc%' 
+                     OR v.vendor_name LIKE '%$search_esc%' 
+                     OR m.make_name LIKE '%$search_esc%' 
+                     OR m.contract_no LIKE '%$search_esc%' 
+                     OR m.financial_year LIKE '%$search_esc%')";
 }
 
 if (!empty($filter_category)) {
@@ -59,9 +59,8 @@ if (!empty($conditions)) {
 
 $query .= " GROUP BY m.model_id";
 
-// HAVING clause to filter out models where a Provisional Survey Off model has zero active/in-use assets remaining
-// Also ensure models where ALL assets are 'Not In Use' are hidden from the active list
-$query .= " HAVING (s.status_name IS NULL OR s.status_name != 'Provisional Survey Off' OR SUM(CASE WHEN a.asset_state != 'Not In Use' THEN 1 ELSE 0 END) > 0)";
+// FIXED HAVING clause: Properly checks for NULL or non-'Not In Use' assets so Provisional models stay visible until all assets are 'Not In Use'
+$query .= " HAVING (s.status_name IS NULL OR s.status_name != 'Provisional Survey Off' OR SUM(CASE WHEN a.asset_state IS NULL OR a.asset_state != 'Not In Use' THEN 1 ELSE 0 END) > 0)";
 
 $query .= " ORDER BY m.model_id ASC";
 $result = mysqli_query($conn, $query);
@@ -145,7 +144,6 @@ $result = mysqli_query($conn, $query);
                     <?php if($result && mysqli_num_rows($result) > 0): ?>
                         <?php $sr = 1; while($row = mysqli_fetch_assoc($result)): ?>
                             <tr>
-                                <!-- ID / Serial Number -->
                                 <td><?= $sr++ ?></td>
 
                                 <!-- Logo / Image -->
