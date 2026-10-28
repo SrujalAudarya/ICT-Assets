@@ -441,26 +441,6 @@ include("../../includes/sidebar.php");
                     </div>
                 </div>
 
-                <!-- PROCUREMENT DOCUMENTS -->
-                <h6 class="text-info fw-bold text-uppercase mb-3 border-top pt-4"><i class="bi bi-folder2-open me-1"></i> Procurement Documents</h6>
-
-                <div class="row bg-light p-3 rounded mb-4 shadow-sm border border-light">
-                    <div class="col-md-4 mb-3 mb-md-0">
-                        <label class="form-label fw-bold text-muted small">Sale Order</label>
-                        <input type="file" name="sale_order" class="form-control bg-white">
-                    </div>
-
-                    <div class="col-md-4 mb-3 mb-md-0">
-                        <label class="form-label fw-bold text-muted small">Invoice</label>
-                        <input type="file" name="invoice" class="form-control bg-white">
-                    </div>
-
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold text-muted small">Warranty Card</label>
-                        <input type="file" name="warranty_doc" class="form-control bg-white">
-                    </div>
-                </div>
-
                 <!-- OPTIONAL ASSIGNMENT -->
                 <h6 class="text-dark fw-bold text-uppercase mb-3 border-top pt-4"><i class="bi bi-person-plus me-1"></i> Fast Assignment (Optional)</h6>
 
